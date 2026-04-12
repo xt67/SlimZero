@@ -140,8 +140,8 @@
         "Tests pass"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: HallucinationRiskScorer with 50-rule heuristic classifier, date/number/citation/recency patterns, uncertainty instructions. 32 tests pass. Total 188 tests."
     },
     {
       "id": "US-009",
