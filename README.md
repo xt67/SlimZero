@@ -1,167 +1,184 @@
-# SlimZero v1 - Documentation Index
+# SlimZero
 
-## Start Here
-- **`SETUP_COMPLETE.md`** ← 📍 You are here
-- **`QUICKREF.md`** - Commands and quick tips
-- **`docs/SETUP.md`** - Detailed guides and workflows
+**Zero-overhead prompt compression, response minimisation, hallucination guarding, and autonomous agent orchestration.**
 
-## Understanding the Tools
+[![PyPI Version](https://img.shields.io/pypi/v/slimzero.svg)](https://pypi.org/project/slimzero/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 
-### Ralph (Autonomous AI Agent Loop)
-- **What:** Runs AI coding tools iteratively to implement user stories
-- **How:** Reads `prd.json`, picks next story, spawns fresh AI instance, implements, tests, commits
-- **Why:** Allows autonomous feature development with memory via git history
-- **Files:** `scripts/ralph/` directory
-- **Read:** `scripts/ralph/prd.json.example` for format
+SlimZero is a model-agnostic Python middleware library that sits between any application and any LLM API. It performs four jobs - **none of which cost a single API token**:
 
-### GSD (Get Shit Done)
-- **What:** Spec-driven development system for Claude Code
-- **How:** Provides context engineering and quality gates to prevent quality degradation
-- **Why:** Makes Claude Code more reliable for larger projects
-- **Files:** `.gsd/` directory, `.claude/skills/` 
-- **Read:** `.gsd/README.md` for full documentation
+- **Prompt Compression** - Automatically rewrites user prompts to be shorter and clearer (40-70% input token reduction)
+- **Response Minimisation** - Pre-conditions the LLM to answer concisely (30-50% output token reduction)
+- **Hallucination Guarding** - Detects hallucination-prone queries and validates responses locally
+- **Agent Orchestration** - Integrated Ralph loop with GSD task decomposition and circuit breakers
 
-## Key Files Explained
+## Installation
 
-| File | What It Is | Edit? | Why |
-|------|-----------|-------|-----|
-| `prd.json` | Ralph task list | YES | Add your user stories here |
-| `progress.txt` | Iteration progress | READ | See what Ralph learned |
-| `scripts/ralph/prompt.md` | Amp instructions | MAYBE | Add project-specific checks |
-| `scripts/ralph/CLAUDE.md` | Claude Code instructions | MAYBE | Customize for your project |
-| `scripts/ralph/AGENTS.md` | Discovered patterns | READ | Contains project insights |
-| `.gsd/` | GSD tool | NO | Leave as-is |
-| `.claude/` | Claude config | NO | Leave as-is |
-| `archive/` | Previous runs | READ | Historical context |
-
-## Workflows
-
-### Minimal: Ralph Only (One-off Features)
-```
-1. Update prd.json with your story
-2. Run: ./scripts/ralph/ralph.sh
-3. Monitor progress.txt
-```
-
-### Complete: Ralph + GSD (Complex Projects)
-```
-1. Use /gsd-new-project to plan
-2. Convert plan to prd.json stories
-3. Run Ralph to implement: ./scripts/ralph/ralph.sh
-4. Use /gsd-plan for new features
-```
-
-### Real-Time: GSD Commands (Live Coding)
-```
-In Claude Code:
-- /gsd-help for available commands
-- /gsd-new-project to initialize
-- /gsd-plan [description] to create plans
-```
-
-## Project Structure at a Glance
-
-```
-SlimZero v1/
-│
-├── 📋 Configuration
-│   ├── prd.json              ← EDIT THIS (user stories)
-│   ├── progress.txt          ← Iteration history
-│   └── scripts/ralph/        ← Ralph tool
-│       ├── ralph.sh          (main loop)
-│       ├── prompt.md         (Amp template)
-│       └── CLAUDE.md         (Claude Code template)
-│
-├── 🛠️ Tools
-│   ├── .gsd/                 ← GSD installation
-│   └── .claude/              ← Claude Code config
-│
-├── 📚 Documentation
-│   ├── SETUP_COMPLETE.md     (this file)
-│   ├── QUICKREF.md           (commands)
-│   ├── docs/SETUP.md         (detailed guide)
-│   └── docs/                 (other docs)
-│
-└── 📦 Directories
-    ├── archive/              ← Previous Ralph runs
-    └── tasks/                ← Task docs
-```
-
-## Common Tasks
-
-### Run Ralph
 ```bash
-./scripts/ralph/ralph.sh
+pip install slimzero
+
+# With agent support (Ralph loop, GSD task graph)
+pip install slimzero[agent]
+
+# With dashboard
+pip install slimzero[dashboard]
+
+# Everything
+pip install slimzero[all]
 ```
 
-### Check Status
-```bash
-cat prd.json | jq '.userStories[] | {id, title, passes}'
+## Quick Start
+
+```python
+from slimzero import SlimZero
+
+# Three lines to add SlimZero to any project
+sz = SlimZero(model="claude-sonnet-4-6")
+result = sz.call(prompt="Explain gradient descent in detail please.")
+print(result.response)
 ```
 
-### See Learnings
-```bash
-cat progress.txt
+## Key Features
+
+### Zero API Token Cost
+All compression, classification, and validation logic runs locally using lightweight models:
+- **spaCy** for intent extraction
+- **T5-small** for prompt rewriting
+- **sentence-transformers** for semantic similarity
+- **tiktoken** for token counting
+
+### Semantic Safety
+Every compression is validated by a semantic similarity gate. Rewrites must preserve meaning before reaching the LLM:
+- Default threshold: 0.92
+- Minimum threshold: 0.80 (non-bypassable)
+- Rejected rewrites use the original prompt
+
+### Hallucination Guarding
+Local classification and validation - no extra API calls:
+- **HIGH risk**: Specific dates, numbers, citations, current facts → uncertainty instruction injected
+- **MEDIUM risk**: Named entities with verifiable attributes → verification instruction injected
+- **LOW risk**: Creative, opinion, open-ended queries → no action
+
+### Agent Mode
+Autonomous task execution with fault prevention:
+- **Circuit breakers**: Max steps, retries, and token budgets
+- **Semantic drift detection**: Alerts when agent diverges from goal
+- **Tool validation**: Rejects invalid tool calls before execution
+- **Checkpointing**: Resume from any failed state
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     USER PROMPT                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Stage 1: Intent Extractor (spaCy)                        │
+│  - Extract core_task, entities, output_format, constraints  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Stage 2: Prompt Rewriter (T5-small)                       │
+│  - Strip filler, merge duplicates, convert to imperative     │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Stage 3: Semantic Guard (MiniLM) ◄── NON-BYPASSABLE       │
+│  - Reject if similarity < 0.92                             │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Stages 4-8: Few-Shot Ranker, History Compressor,          │
+│               Response Format Injector, Hallucination Scorer │
+│               Token Budget Enforcer                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    LLM API CALL                             │
+│                    (ONLY API CALL)                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Post-Processing: Response Validator, Hallucination Flag,    │
+│                   Savings Logger                            │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    OPTIMIZED RESPONSE                       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Use GSD
+## Configuration
+
+```python
+from slimzero import SlimZero
+
+sz = SlimZero(
+    model="claude-sonnet-4-6",       # Target model
+    api_client=my_client,            # Optional: wrap existing client
+    token_budget=4096,               # Hard token ceiling
+    sim_threshold=0.92,              # Semantic similarity gate
+    few_shot_k=3,                    # Keep top-k few-shot examples
+    history_window=4,                 # Recent turns to keep verbatim
+    hallucination_guard=True,         # Enable hallucination scoring
+    response_validation=True,         # Validate response intent
+    agent_mode=False,                # Enable Ralph loop
+    max_agent_steps=20,              # Circuit breaker: max steps
+    drift_threshold=0.75,            # Semantic drift detection
+    dashboard=True,                  # Show live savings
+    log_file="slimzero.jsonl",      # Structured log output
+)
 ```
-In Claude Code, run:
-/gsd-help
-/gsd-new-project
-/gsd-plan
+
+## Agent Mode
+
+```python
+from slimzero import SlimZero
+
+sz = SlimZero(model="claude-opus-4-6", agent_mode=True)
+
+result = sz.run_goal(
+    goal="Research the top 5 vector databases and write a comparison report.",
+    tools=[search_tool, read_tool, write_tool]
+)
+
+print(result.response)
+# Audit trail available in result.metadata['audit_trail']
 ```
 
-### Add a Story
-Edit `prd.json` and add to `userStories` array:
-```json
-{
-  "id": "unique-id",
-  "title": "Story Title",
-  "description": "What to do",
-  "acceptanceCriteria": ["Specific testable criteria"],
-  "priority": 1,
-  "passes": false
-}
-```
+## Supported Providers
 
-## Recommended Reading Order
+- Anthropic (Claude)
+- OpenAI (GPT-4, GPT-3.5)
+- Google (Gemini)
+- Ollama (local models)
+- Any OpenAI-spec compatible API
 
-1. **`QUICKREF.md`** (5 min) - Get the commands
-2. **`SETUP_COMPLETE.md`** (10 min) - Understand what's installed
-3. **`docs/SETUP.md`** (15 min) - Learn the workflow
-4. **`scripts/ralph/prd.json.example`** (5 min) - See story format
-5. **`.gsd/README.md`** (20 min) - Deep dive on GSD
+## Benchmarks (Targets)
 
-## Getting Help
+| Metric | Target |
+|--------|--------|
+| Input token reduction | 40-70% |
+| Output token reduction | 30-50% |
+| Meta-token cost | 0 |
+| Semantic similarity (accepted rewrites) | > 0.94 |
+| Rewrite rejection rate | < 8% |
+| Local pipeline latency (CPU) | < 150ms |
+| Local pipeline latency (GPU) | < 40ms |
 
-### Ralph Questions
-- See: `scripts/ralph/prd.json.example`
-- See: `scripts/ralph/AGENTS.md` (discovered patterns)
-- See: `docs/SETUP.md` (detailed guide)
+## License
 
-### GSD Questions
-- Run: `/gsd-help` in Claude Code
-- See: `.gsd/README.md`
-- See: `.gsd/docs/`
+MIT License - See [LICENSE](LICENSE) for details.
 
-### General Setup Issues
-- See: `docs/SETUP.md` → Troubleshooting section
-- Check: `progress.txt` for error messages
-- Verify: Git is initialized, tools are installed
+## Contributing
 
-## Next Immediate Steps
-
-1. ✅ Setup is complete (you're here)
-2. **→ Open `QUICKREF.md` for immediate next steps**
-3. → Review your PRD and update `prd.json`
-4. → Initialize git: `git init && git add . && git commit -m "initial"`
-5. → Run Ralph: `./scripts/ralph/ralph.sh`
-
----
-
-**Status:** ✅ Ready to Build  
-**Last Updated:** 2026-04-11 17:15 UTC  
-**Maintenance:** Minimal - Ralph and GSD are mostly self-contained
-
-Open **`QUICKREF.md`** next → 
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
