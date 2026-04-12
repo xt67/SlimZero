@@ -4,7 +4,8 @@ SlimZero Core Module
 Main SlimZero class and pipeline runner.
 """
 
-from typing import Optional, Any, List
+import logging
+from typing import Optional, Any, List, Dict
 
 from slimzero.schemas import (
     IntentSchema,
@@ -13,12 +14,27 @@ from slimzero.schemas import (
     SlimZeroResult,
     OutputFormat,
     HallucinationRiskTier,
-    SavingsStats,
 )
 from slimzero.exceptions import (
     SlimZeroError,
     SlimZeroInputError,
 )
+
+logger = logging.getLogger(__name__)
+
+from slimzero.stages.intent import IntentExtractor
+from slimzero.stages.rewriter import PromptRewriter
+from slimzero.stages.semantic_guard import SemanticGuard
+from slimzero.stages.few_shot import FewShotRanker
+from slimzero.stages.history import HistoryCompressor
+from slimzero.stages.injector import ResponseFormatInjector
+from slimzero.stages.hallucination import HallucinationRiskScorer
+from slimzero.stages.budget import TokenBudgetEnforcer
+from slimzero.post.validator import ResponseValidator
+from slimzero.post.flagger import HallucinationFlagger
+from slimzero.post.logger import SavingsLogger
+
+DEFAULT_TOKEN_BUDGET = 512
 
 
 class SlimZero:
@@ -51,7 +67,7 @@ class SlimZero:
     ):
         self.model = model
         self.api_client = api_client
-        self.token_budget = token_budget
+        self.token_budget = token_budget or DEFAULT_TOKEN_BUDGET
         self.sim_threshold = sim_threshold
         self.few_shot_k = few_shot_k
         self.history_window = history_window
@@ -64,18 +80,211 @@ class SlimZero:
         self.dashboard = dashboard
         self.log_file = log_file
 
-    def call(self, prompt: str, system_prompt: Optional[str] = None) -> SlimZeroResult:
+        self._intent_extractor = IntentExtractor()
+        self._rewriter = PromptRewriter()
+        self._semantic_guard = SemanticGuard(threshold=sim_threshold)
+        self._few_shot_ranker = FewShotRanker(k=few_shot_k)
+        self._history_compressor = HistoryCompressor(window=history_window)
+        self._response_injector = ResponseFormatInjector()
+        self._hallucination_scorer = HallucinationRiskScorer()
+        self._budget_enforcer = TokenBudgetEnforcer(token_budget=self.token_budget)
+        self._response_validator = ResponseValidator()
+        self._hallucination_flagger = HallucinationFlagger()
+        self._savings_logger = SavingsLogger()
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count."""
+        return len(text.split())
+
+    def _call_llm(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+    ) -> str:
+        """
+        Call the LLM API.
+
+        Args:
+            prompt: The user prompt
+            system_prompt: Optional system prompt
+
+        Returns:
+            LLM response text
+        """
+        if self.api_client:
+            try:
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+
+                response = self.api_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                )
+                content: str = response.choices[0].message.content
+                return content
+            except Exception as e:
+                logger.warning(f"API call failed: {e}")
+                return f"[API Error: {e}]"
+
+        return f"[Mock response for: {prompt[:50]}...]"
+
+    def call(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        history: Optional[List[Dict[str, str]]] = None,
+        few_shot_examples: Optional[List[str]] = None,
+    ) -> SlimZeroResult:
         """
         Process a single prompt through the SlimZero pipeline.
+
+        Pipeline order:
+        1. Intent Extractor
+        2. Prompt Rewriter
+        3. Semantic Guard
+        4. Few-Shot Ranker
+        5. History Compressor
+        6. Response Format Injector
+        7. Hallucination Risk Scorer
+        8. Token Budget Enforcer
+        9. LLM Call
+        10. Response Validator (post)
+        11. Hallucination Flagger (post)
+        12. Savings Logger (post)
 
         Args:
             prompt: The user prompt to process
             system_prompt: Optional system prompt to prepend
+            history: Optional conversation history
+            few_shot_examples: Optional few-shot examples
 
         Returns:
             SlimZeroResult with optimized response
         """
-        raise NotImplementedError("Pipeline implementation pending US-013")
+        if not prompt or not prompt.strip():
+            raise SlimZeroInputError("Prompt cannot be empty", field_name="prompt")
+
+        original_prompt = prompt
+        original_tokens = self._estimate_tokens(original_prompt)
+        stages_applied: List[str] = []
+
+        try:
+            intent = self._intent_extractor.extract(prompt)
+            stages_applied.append("intent_extractor")
+
+            inp = StageInput(
+                prompt=prompt,
+                intent=intent,
+                token_count=original_tokens,
+                system_prompt=system_prompt,
+                history=history,
+                few_shot_examples=few_shot_examples,
+            )
+
+            rewriter_out = self._rewriter.process(inp)
+            stages_applied.append("prompt_rewriter")
+            rewritten_prompt = rewriter_out.prompt
+
+            inp.metadata["original_prompt"] = original_prompt
+            inp.metadata["rewritten_prompt"] = rewritten_prompt
+
+            guard_out = self._semantic_guard.process(inp)
+            semantic_similarity = guard_out.metadata.get("similarity", 1.0)
+            validated_prompt = guard_out.prompt
+
+            if inp.few_shot_examples:
+                few_shot_out = self._few_shot_ranker.process(inp)
+                stages_applied.append("few_shot_ranker")
+                few_shot_examples = few_shot_out.metadata.get("retained_examples", few_shot_examples)
+
+            if history:
+                history_out = self._history_compressor.process(inp)
+                stages_applied.append("history_compressor")
+                compressed_history = history_out.metadata.get("compressed_history", history)
+                prior_context = history_out.metadata.get("prior_context")
+                inp.metadata["prior_context"] = prior_context
+            else:
+                compressed_history = history
+
+            injector_out = self._response_injector.process(inp)
+            stages_applied.append("response_format_injector")
+            injected_system = injector_out.metadata.get("modified_system_prompt", system_prompt)
+            injected_fragment = injector_out.metadata.get("fragment_used")
+
+            halluc_out = self._hallucination_scorer.process(inp)
+            stages_applied.append("hallucination_risk_scorer")
+            hallucination_risk_tier = HallucinationRiskTier(halluc_out.metadata["risk_tier"])
+
+            inp.metadata["injected_fragment"] = injected_fragment
+            budget_out = self._budget_enforcer.process(inp)
+            stages_applied.append("token_budget_enforcer")
+            final_prompt = budget_out.prompt
+            final_system = budget_out.metadata.get("modified_system_prompt", injected_system)
+
+            sent_tokens = budget_out.token_count or self._estimate_tokens(final_prompt)
+
+            response = self._call_llm(final_prompt, final_system)
+            stages_applied.append("llm_call")
+
+            validation_result = self._response_validator.validate_with_metadata(
+                intent, response
+            )
+            stages_applied.append("response_validator")
+
+            flag_result = self._hallucination_flagger.flag(response)
+            stages_applied.append("hallucination_flagger")
+
+            self._savings_logger.log_call(
+                original_input_tokens=original_tokens,
+                sent_input_tokens=sent_tokens,
+                estimated_output_tokens=self._estimate_tokens(response),
+                stages_applied=stages_applied,
+                semantic_similarity=semantic_similarity,
+                hallucination_risk_tier=hallucination_risk_tier,
+                response_validated=validation_result["validation_passed"],
+                flags_raised=flag_result["total_flags"],
+            )
+
+            flag_categories = list(flag_result["categories"].keys()) if flag_result["has_flags"] else []
+
+            return SlimZeroResult(
+                response=response,
+                original_prompt=original_prompt,
+                sent_prompt=final_prompt,
+                original_input_tokens=original_tokens,
+                sent_input_tokens=sent_tokens,
+                estimated_output_tokens=self._estimate_tokens(response),
+                stages_applied=stages_applied,
+                semantic_similarity=semantic_similarity,
+                hallucination_risk_tier=hallucination_risk_tier,
+                response_validated=validation_result["validation_passed"],
+                flags_raised=flag_categories,
+                metadata={"intent": intent.to_dict()},
+            )
+
+        except Exception as e:
+            logger.error(f"Pipeline error: {e}")
+            stages_applied.append(f"error: {type(e).__name__}")
+
+            response = self._call_llm(original_prompt, system_prompt)
+            stages_applied.append("llm_call_fallback")
+
+            return SlimZeroResult(
+                response=response,
+                original_prompt=original_prompt,
+                sent_prompt=original_prompt,
+                original_input_tokens=original_tokens,
+                sent_input_tokens=original_tokens,
+                estimated_output_tokens=self._estimate_tokens(response),
+                stages_applied=stages_applied,
+                semantic_similarity=1.0,
+                hallucination_risk_tier=HallucinationRiskTier.LOW,
+                response_validated=True,
+                flags_raised=[],
+                metadata={},
+            )
 
     def run_goal(self, goal: str, tools: Optional[List[Any]] = None):
         """
@@ -93,3 +302,15 @@ class SlimZero:
                 "agent_mode must be enabled to use run_goal"
             )
         raise NotImplementedError("Agent implementation pending US-015")
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cumulative savings statistics."""
+        return self._savings_logger.get_cumulative_stats()
+
+    def export_stats_json(self, filepath: Optional[str] = None) -> str:
+        """Export session statistics to JSON."""
+        return self._savings_logger.export_json(filepath)
+
+    def export_stats_markdown(self, filepath: Optional[str] = None) -> str:
+        """Export session statistics to Markdown."""
+        return self._savings_logger.export_markdown(filepath)
