@@ -30,23 +30,26 @@
 - Created slimzero/__main__.py for CLI entry point
 - Created pyproject.toml with package metadata and dependency extras
 - Created tests/test_slimzero.py with 22 tests
-- All tests pass: 22/22
-- Typecheck passes: mypy success
 
 ### US-002: Implement Intent Extractor stage (Stage 1) - COMPLETE
 - Created slimzero/stages/intent.py with IntentExtractor class
-- Uses spaCy (en_core_web_sm) for NLP parsing
-- Extracts: core_task, entities, output_format, constraints
+- Uses spaCy (en_core_web_sm) for NLP parsing with graceful fallback
+- Extracts core_task, entities, output_format, constraints
 - Output format detection: CODE, LIST, TABLE, EXPLAIN, GENERAL
-- Filler phrase removal ("please", "could you", etc.)
-- Graceful fallback when spaCy unavailable
+- Filler phrase removal
 - Created tests/test_intent.py with 29 tests
-- All tests pass: 29/29
-- Total tests: 51/51 passing
+
+### US-003: Implement Semantic Guard stage (Stage 3) - COMPLETE
+- Created slimzero/stages/semantic_guard.py with SemanticGuard class
+- Uses sentence-transformers (all-MiniLM-L6-v2) for cosine similarity
+- Configurable threshold (default 0.92, min 0.80)
+- Non-bypassable safety rule
+- Fallback mode when sentence-transformers unavailable
+- Created tests/test_semantic_guard.py with 19 tests
 
 ## Stories Ordered by Dependency
 1. Package structure (foundation) - US-001 COMPLETE
-2. Local processing stages - US-002 COMPLETE, US-003 to US-009 PENDING
+2. Local processing stages - US-002 COMPLETE, US-003 COMPLETE, US-004 to US-009 PENDING
 3. Post-processing (Validator, Flagger, Logger) - US-010 to US-012 PENDING
 4. Core pipeline runner - US-013 PENDING
 5. Agent orchestration (GSD, Ralph) - US-014 to US-015 PENDING
@@ -54,12 +57,14 @@
 7. Package and examples - US-018 PENDING
 
 ## Progress Summary
-- Stories completed: 2/18 (11%)
-- Stories remaining: 16
+- Stories completed: 3/18 (17%)
+- Stories remaining: 15
+- Total tests: 70 passing
+- Typecheck: passing
 
 ## Next Steps
 1. [x] US-001: Package structure - COMPLETE
 2. [x] US-002: Intent Extractor - COMPLETE
-3. [ ] US-003: Semantic Guard stage (Stage 3)
+3. [x] US-003: Semantic Guard - COMPLETE
 4. [ ] US-004: Prompt Rewriter stage (Stage 2)
 5. [ ] Continue with remaining pipeline stages
