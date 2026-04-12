@@ -203,3 +203,30 @@ class SavingsStats:
             "total_savings": self.total_savings,
             "estimated_cost_savings_usd": self.estimated_cost_savings,
         }
+
+
+@dataclass
+class AgentResult:
+    """
+    Result returned after agent goal execution.
+    """
+
+    goal: str
+    output: str
+    result: str
+    steps: int
+    total_tokens_saved: int
+    audit_trail: List[Dict[str, Any]] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON export."""
+        return {
+            "goal": self.goal,
+            "output": self.output,
+            "result": self.result,
+            "steps": self.steps,
+            "total_tokens_saved": self.total_tokens_saved,
+            "audit_trail": self.audit_trail,
+            "metadata": self.metadata,
+        }

@@ -4,6 +4,7 @@ SlimZero Core Module
 Main SlimZero class and pipeline runner.
 """
 
+import json
 import logging
 from typing import Optional, Any, List, Dict
 
@@ -12,6 +13,7 @@ from slimzero.schemas import (
     StageInput,
     StageOutput,
     SlimZeroResult,
+    AgentResult,
     OutputFormat,
     HallucinationRiskTier,
 )
@@ -33,6 +35,8 @@ from slimzero.stages.budget import TokenBudgetEnforcer
 from slimzero.post.validator import ResponseValidator
 from slimzero.post.flagger import HallucinationFlagger
 from slimzero.post.logger import SavingsLogger
+from slimzero.agent.ralph import RalphLoop
+from slimzero.dashboard import get_dashboard, SlimZeroDashboard
 
 DEFAULT_TOKEN_BUDGET = 512
 
@@ -91,6 +95,29 @@ class SlimZero:
         self._response_validator = ResponseValidator()
         self._hallucination_flagger = HallucinationFlagger()
         self._savings_logger = SavingsLogger()
+
+        self._ralph_loop: Optional[RalphLoop] = None
+        if agent_mode:
+            self._init_agent()
+
+        self._dashboard: Optional[SlimZeroDashboard] = None
+        if dashboard:
+            self._init_dashboard()
+
+    def _init_agent(self) -> None:
+        """Initialize the Ralph agent loop."""
+        self._ralph_loop = RalphLoop(
+            max_steps=self.max_agent_steps,
+            max_retries_per_step=self.max_retries,
+            drift_threshold=self.drift_threshold,
+            api_client=self.api_client,
+        )
+
+    def _init_dashboard(self) -> None:
+        """Initialize the live dashboard."""
+        self._dashboard = get_dashboard()
+        if self._dashboard.is_enabled:
+            self._dashboard.start()
 
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count."""
@@ -247,6 +274,14 @@ class SlimZero:
                 flags_raised=flag_result["total_flags"],
             )
 
+            if self._dashboard and self._dashboard.is_enabled:
+                self._dashboard.log_call(
+                    original_tokens=original_tokens,
+                    sent_tokens=sent_tokens,
+                    similarity=semantic_similarity,
+                    hallucination_flags=flag_result["total_flags"],
+                )
+
             flag_categories = list(flag_result["categories"].keys()) if flag_result["has_flags"] else []
 
             return SlimZeroResult(
@@ -286,22 +321,86 @@ class SlimZero:
                 metadata={},
             )
 
-    def run_goal(self, goal: str, tools: Optional[List[Any]] = None):
+    def run_goal(
+        self,
+        goal: str,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        initial_plan: Optional[str] = None,
+    ) -> AgentResult:
         """
-        Run a goal through the agent loop (requires agent_mode=True).
+        Run a goal through the agent loop with SlimZero compression.
+
+        Each step in the agent loop applies SlimZero compression to reduce costs.
 
         Args:
             goal: The goal to accomplish
-            tools: List of tools available to the agent
+            tools: List of tool definitions available to the agent
+            initial_plan: Optional initial plan for the goal
 
         Returns:
-            Agent result with audit trail
+            AgentResult with output, audit trail, and statistics
         """
         if not self.agent_mode:
             raise SlimZeroError(
-                "agent_mode must be enabled to use run_goal"
+                "agent_mode must be enabled to use run_goal. "
+                "Initialize SlimZero with agent_mode=True"
             )
-        raise NotImplementedError("Agent implementation pending US-015")
+
+        if self._ralph_loop is None:
+            self._init_agent()
+
+        assert self._ralph_loop is not None, "Ralph loop not initialized"
+
+        logger.info(f"Starting agent goal: {goal[:50]}...")
+
+        try:
+            agent_output = self._ralph_loop.run(
+                goal=goal,
+                tools=tools,
+                initial_plan=initial_plan,
+            )
+
+            audit_trail = json.loads(agent_output.get("audit_log", "[]"))
+            total_tokens_saved = self._savings_logger.get_cumulative_stats().get(
+                "cumulative_tokens_saved", 0
+            )
+
+            output = agent_output.get("result", "unknown")
+            if agent_output.get("result") == "max_steps_reached":
+                output = f"Goal partially completed after {agent_output['steps']} steps"
+            elif agent_output.get("result") == "circuit_breaker":
+                output = f"Circuit breaker triggered: {agent_output.get('reason', 'unknown')}"
+            elif agent_output.get("result") == "drift_detected":
+                output = f"Semantic drift detected at similarity {agent_output.get('similarity', 0):.2f}"
+
+            result = AgentResult(
+                goal=goal,
+                output=output,
+                result=agent_output.get("result", "unknown"),
+                steps=agent_output.get("steps", 0),
+                total_tokens_saved=total_tokens_saved,
+                audit_trail=audit_trail,
+                metadata={
+                    "agent_result": agent_output.get("result"),
+                    "reason": agent_output.get("reason"),
+                    "similarity": agent_output.get("similarity"),
+                    "compression_stages": self._savings_logger.get_cumulative_stats(),
+                },
+            )
+
+            logger.info(f"Agent goal complete: {result.result}, steps={result.steps}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Agent error: {e}")
+            return AgentResult(
+                goal=goal,
+                output=f"Error: {str(e)}",
+                result="error",
+                steps=0,
+                total_tokens_saved=0,
+                metadata={"error": str(e)},
+            )
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cumulative savings statistics."""

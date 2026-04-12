@@ -1,201 +1,269 @@
 # SlimZero
 
-**Zero-overhead prompt compression, response minimisation, hallucination guarding, and autonomous agent orchestration.**
+**Zero-overhead token compression for LLM APIs.**
 
-[![PyPI Version](https://img.shields.io/pypi/v/slimzero.svg)](https://pypi.org/project/slimzero/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+SlimZero sits between your app and any LLM — Claude, GPT-4, Gemini, Ollama — and quietly makes every call cheaper, faster, and less likely to hallucinate. It rewrites your prompts locally, tells the model to respond concisely, and validates the response, all without spending a single token doing it.
 
-SlimZero is a model-agnostic Python middleware library that sits between any application and any LLM API. It performs four jobs - **none of which cost a single API token**:
+```python
+from slimzero import SlimZero
 
-- **Prompt Compression** - Automatically rewrites user prompts to be shorter and clearer (40-70% input token reduction)
-- **Response Minimisation** - Pre-conditions the LLM to answer concisely (30-50% output token reduction)
-- **Hallucination Guarding** - Detects hallucination-prone queries and validates responses locally
-- **Agent Orchestration** - Integrated Ralph loop with GSD task decomposition and circuit breakers
+sz = SlimZero(model="claude-sonnet-4-6")
+response = sz.call("Can you please maybe explain what gradient descent is in simple terms?")
+# → internally rewrites to: "Explain gradient descent simply."
+# → appends: "One paragraph max. No summary."
+# → hits API once
+# → saved 31 input tokens, ~55 output tokens estimated
+```
+
+---
+
+## Why SlimZero?
+
+Every other token optimisation tool — LangChain optimisers, DSPy, LLMLingua — burns API tokens to optimise your prompts. SlimZero does all of that locally. The API is called exactly once, for your actual query, never for the optimisation work itself.
+
+| Tool | Meta-token cost | Hallucination guard | Agent fault control | Drop-in? |
+|---|---|---|---|---|
+| LangChain optimiser | HIGH | None | None | No |
+| DSPy | HIGH | None | None | No |
+| LLMLingua | Low | None | None | Partial |
+| **SlimZero** | **Zero** | **Built-in** | **Full** | **Yes** |
+
+---
+
+## What it does
+
+### 1. Compresses your prompt locally
+Strips filler words, merges redundant clauses, converts hedged phrasing to direct instructions. Uses a local T5-small model — never the target API.
+
+### 2. Pre-conditions minimal responses
+Appends a tiny system instruction fragment (under 12 tokens) that tells the LLM to skip preamble, not restate the question, and answer only what was asked. This happens before the API call, not after — so you pay for fewer output tokens too.
+
+### 3. Guards against hallucinations
+Classifies your query by risk level locally — dates, numbers, citations are HIGH risk; open-ended questions are LOW. High-risk queries get an uncertainty instruction appended. After the response arrives, a local validator checks it actually addressed your question.
+
+### 4. Runs a full autonomous agent loop
+Built-in Ralph loop + GSD task graph for long-horizon goals. Decomposes goals into checkpointed sub-tasks, applies compression on every agent step, and includes circuit breakers, semantic drift detection, and tool-call validation. No runaway loops, no silent failures.
+
+### 5. Tracks everything
+A live savings dashboard shows tokens saved per call, cumulative cost reduction, which stages fired, and hallucination flags — exportable as JSON.
+
+---
 
 ## Installation
 
 ```bash
 pip install slimzero
-
-# With agent support (Ralph loop, GSD task graph)
-pip install slimzero[agent]
-
-# With dashboard
-pip install slimzero[dashboard]
-
-# Everything
-pip install slimzero[all]
 ```
 
-## Quick Start
+Optional extras:
+
+```bash
+pip install slimzero[agent]      # Ralph loop + GSD task graph
+pip install slimzero[dashboard]  # Rich live terminal dashboard
+pip install slimzero[all]        # Everything
+```
+
+---
+
+## Quick start
+
+### Basic call
 
 ```python
 from slimzero import SlimZero
 
-# Three lines to add SlimZero to any project
 sz = SlimZero(model="claude-sonnet-4-6")
-result = sz.call(prompt="Explain gradient descent in detail please.")
-print(result.response)
+result = sz.call("Explain what a transformer model is in detail please.")
+
+print(result.response)       # LLM response
+print(result.input_token_savings_percent)   # e.g. 38%
+print(result.flags_raised)          # hallucination flags, if any
 ```
 
-## Key Features
+### With an existing client
 
-### Zero API Token Cost
-All compression, classification, and validation logic runs locally using lightweight models:
-- **spaCy** for intent extraction
-- **T5-small** for prompt rewriting
-- **sentence-transformers** for semantic similarity
-- **tiktoken** for token counting
+```python
+import anthropic
+from slimzero import SlimZero
 
-### Semantic Safety
-Every compression is validated by a semantic similarity gate. Rewrites must preserve meaning before reaching the LLM:
-- Default threshold: 0.92
-- Minimum threshold: 0.80 (non-bypassable)
-- Rejected rewrites use the original prompt
+client = anthropic.Anthropic()
+sz = SlimZero(api_client=client, model="claude-opus-4-6")
 
-### Hallucination Guarding
-Local classification and validation - no extra API calls:
-- **HIGH risk**: Specific dates, numbers, citations, current facts → uncertainty instruction injected
-- **MEDIUM risk**: Named entities with verifiable attributes → verification instruction injected
-- **LOW risk**: Creative, opinion, open-ended queries → no action
-
-### Agent Mode
-Autonomous task execution with fault prevention:
-- **Circuit breakers**: Max steps, retries, and token budgets
-- **Semantic drift detection**: Alerts when agent diverges from goal
-- **Tool validation**: Rejects invalid tool calls before execution
-- **Checkpointing**: Resume from any failed state
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     USER PROMPT                              │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Stage 1: Intent Extractor (spaCy)                        │
-│  - Extract core_task, entities, output_format, constraints    │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Stage 2: Prompt Rewriter (T5-small)                      │
-│  - Strip filler, merge duplicates, convert to imperative     │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Stage 3: Semantic Guard (MiniLM) ◄── NON-BYPASSABLE       │
-│  - Reject if similarity < 0.92                             │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Stages 4-8: Few-Shot Ranker, History Compressor,          │
-│               Response Format Injector, Hallucination Scorer │
-│               Token Budget Enforcer                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    LLM API CALL                             │
-│                    (ONLY API CALL)                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Post-Processing: Response Validator, Hallucination Flag,    │
-│                   Savings Logger                            │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    OPTIMIZED RESPONSE                       │
-└─────────────────────────────────────────────────────────────┘
+result = sz.call("Write a Python function to reverse a linked list.")
 ```
 
-## Configuration
+### Multi-turn conversation
+
+```python
+sz = SlimZero(model="gpt-4o", history_window=4)
+
+result1 = sz.call("What is gradient descent?")
+result2 = sz.call("Now give me a Python example.")
+# Old turns are auto-compressed. Recent turns stay verbatim.
+```
+
+### Autonomous agent mode
 
 ```python
 from slimzero import SlimZero
 
 sz = SlimZero(
-    model="claude-sonnet-4-6",       # Target model
-    api_client=my_client,              # Optional: wrap existing client
-    token_budget=4096,               # Hard token ceiling
-    sim_threshold=0.92,               # Semantic similarity gate
-    few_shot_k=3,                    # Keep top-k few-shot examples
-    history_window=4,                 # Recent turns to keep verbatim
-    hallucination_guard=True,         # Enable hallucination scoring
-    response_validation=True,          # Validate response intent
-    agent_mode=False,                # Enable Ralph loop
-    max_agent_steps=20,              # Circuit breaker: max steps
-    drift_threshold=0.75,             # Semantic drift detection
-    dashboard=True,                  # Show live savings
-    log_file="slimzero.jsonl",       # Structured log output
+    model="claude-opus-4-6",
+    agent_mode=True,
+    max_agent_steps=30,
+    dashboard=True
 )
-```
-
-## Agent Mode
-
-```python
-from slimzero import SlimZero
-
-sz = SlimZero(model="claude-opus-4-6", agent_mode=True)
 
 result = sz.run_goal(
-    goal="Research the top 5 vector databases and write a comparison report.",
-    tools=[search_tool, read_tool, write_tool]
+    goal="Research the top 5 open-source vector databases and write a comparison report.",
+    tools=[search_tool, write_tool, read_tool]
 )
 
-print(result.response)
-# Audit trail available in result.metadata['audit_trail']
+print(result.output)        # Final result
+print(result.audit_trail)   # Every tool call logged
+print(result.total_tokens_saved)
 ```
 
-## Supported Providers
+---
 
-- Anthropic (Claude)
-- OpenAI (GPT-4, GPT-3.5)
-- Google (Gemini)
-- Ollama (local models)
-- Any OpenAI-spec compatible API
+## How the pipeline works
 
-## Project Structure
+Every call passes through 8 local stages before hitting the API, then 3 local stages after.
 
 ```
-slimzero/
-├── __init__.py          # Package exports
-├── __main__.py          # CLI entry point
-├── core.py              # Main SlimZero class
-├── exceptions.py        # Exception hierarchy
-├── schemas.py           # Data schemas
-├── stages/              # Pipeline stages
-│   ├── intent.py       # Intent extraction
-│   └── semantic_guard.py # Semantic validation
-├── post/                # Post-processing
-├── agent/               # Agent orchestration
-└── plugins/             # Plugin API
+User prompt
+    │
+    ▼
+┌─────────────────────────────── LOCAL (0 tokens) ──────────────────────────────┐
+│  Stage 1  Intent Extractor      spaCy · parse task, entities, format          │
+│  Stage 2  Prompt Rewriter       T5-small · compress to imperative form        │
+│  Stage 3  Semantic Guard ⚠     MiniLM · reject if similarity < 0.92           │
+│  Stage 4  Few-Shot Ranker      cosine sim · keep top-k examples               │
+│  Stage 5  History Compressor   T5-small · summarise old turns                │
+│  Stage 6  Format Injector     rule engine · append response fragment          │
+│  Stage 7  Hallucination Scorer heuristics · classify risk · inject if HIGH   │
+│  Stage 8  Budget Enforcer      tiktoken · hard cap · trim by priority         │
+└───────────────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────── API CALL (tokens spent) ───────────────────────────┐
+│  Target LLM — optimised payload only                                          │
+└───────────────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────── LOCAL (0 tokens) ──────────────────────────────┐
+│  Post 1   Response Validator    MiniLM · check reply addresses intent          │
+│  Post 2   Hallucination Flagger 80 heuristic patterns · annotate metadata     │
+│  Post 3   Savings Logger       token delta · cost · cumulative dashboard       │
+└───────────────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+SlimZeroResult (response + metadata + savings)
 ```
 
-## Benchmarks (Targets)
+**Stage 3 is the only non-bypassable stage.** If the rewrite changes meaning (similarity drops below 0.92), the original prompt is sent instead. Savings never come at the cost of correctness.
 
-| Metric | Target |
-|--------|--------|
-| Input token reduction | 40-70% |
-| Output token reduction | 30-50% |
-| Meta-token cost | 0 |
-| Semantic similarity (accepted rewrites) | > 0.94 |
-| Rewrite rejection rate | < 8% |
-| Local pipeline latency (CPU) | < 150ms |
-| Local pipeline latency (GPU) | < 40ms |
+---
+
+## Configuration
+
+```python
+sz = SlimZero(
+    model="claude-sonnet-4-6",      # any OpenAI-spec model string
+    api_client=None,                 # pass existing client, or SlimZero creates one
+    token_budget=4096,              # hard token ceiling for outbound prompt
+    sim_threshold=0.92,             # semantic guard threshold (min 0.80)
+    few_shot_k=3,                  # max few-shot examples to keep
+    history_window=4,               # recent turns kept verbatim
+    hallucination_guard=True,       # enable risk scoring + uncertainty injection
+    response_validation=True,       # enable post-response intent check
+    agent_mode=False,               # enable Ralph loop + GSD
+    max_agent_steps=20,            # circuit breaker: max steps
+    max_retries=3,                 # circuit breaker: retries per sub-task
+    drift_threshold=0.75,           # semantic drift detection threshold
+    dashboard=False,                # Rich live terminal dashboard
+    log_file=None,                 # path for JSON structured log
+)
+```
+
+---
+
+## Fault prevention
+
+SlimZero is built around eight layered defences:
+
+| Layer | Mechanism | Response |
+|---|---|---|
+| L1 Input validation | Schema check on every call | Raise `SlimZeroInputError` |
+| L2 Semantic gate | Cosine similarity post-rewrite | Reject rewrite, use original |
+| L3 Budget enforcer | Token count check | Trim in priority order |
+| L4 Response gate | Intent similarity post-call | Flag `OFF_TASK` with warning |
+| L5 Hallucination flag | Heuristic pattern scan | Annotate response metadata |
+| L6 Circuit breaker | Step/retry/token budget | Halt loop, checkpoint state |
+| L7 Drift detector | Plan embedding divergence | Re-ground agent, halt if re-drifts |
+| L8 Tool validator | Argument schema check | Reject call, return structured error |
+
+Three rules that never change:
+
+- SlimZero **never suppresses** an LLM response. Flags are metadata — the response always reaches your code.
+- SlimZero **never blocks** a request. If every stage fails, the original prompt is sent unchanged.
+- The semantic guard **cannot be disabled** — only its threshold can be lowered (minimum 0.80).
+
+---
+
+## Agent mode — Ralph + GSD
+
+`agent_mode=True` activates the full autonomous agent orchestration layer.
+
+**GSD (Get-Shit-Done)** decomposes your goal into a directed graph of sub-tasks using one LLM call. Each sub-task is checkpointed — if the session dies, it resumes from where it left off.
+
+**Ralph** runs each sub-task in an observe → plan → act → reflect loop. SlimZero applies the full compression pipeline to every LLM call inside the loop, so agent steps are as cheap as regular calls.
+
+**Circuit breakers** halt the loop if any budget is exhausted (max steps, max retries, max tokens). State is always checkpointed before halting — no work is lost.
+
+**Semantic drift detection** watches whether the agent's plan stays aligned with the original goal. If it diverges for three consecutive steps, it is re-grounded. If it diverges again, the loop halts.
+
+---
+
+## Plugin API
+
+Every pipeline stage is a plugin. Add your own compressor without touching SlimZero's core:
+
+```python
+from slimzero.plugins import BaseStage, StageInput, StageOutput
+
+class MyCompressor(BaseStage):
+    name = "my_compressor"
+
+    def process(self, inp: StageInput) -> StageOutput:
+        new_prompt = your_compression_logic(inp.prompt)
+        return StageOutput(prompt=new_prompt, modified=True, notes="custom compression")
+
+sz = SlimZero(model="...", extra_stages=[MyCompressor()])
+```
+
+Plugins auto-discovered via Python entry points (`slimzero.stages` group). Community plugins installable as separate packages.
+
+---
+
+## Tech stack
+
+| Library | Purpose |
+|---|---|
+| spaCy `en_core_web_sm` | Intent extraction |
+| sentence-transformers `all-MiniLM-L6-v2` | Semantic guard + response validation |
+| tiktoken | Token counting (all major models) |
+| transformers + T5-small | Local prompt rewriter |
+| Ollama Python client | Fallback local rewriter |
+| networkx | GSD task graph |
+| Rich | Live dashboard + logging |
+
+---
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+MIT — use it in anything.
 
-## Contributing
+---
 
-Contributions welcome! Please submit pull requests or open issues on GitHub.
+*Built to solve a real problem: every token should do real work.*
