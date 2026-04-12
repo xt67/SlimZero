@@ -244,8 +244,8 @@
         "Tests pass"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: GSDTaskGraph with networkx DiGraph, task decomposition, checkpointing, circular dependency validation. 20 tests pass. Total 345 tests."
     },
     {
       "id": "US-015",
@@ -262,8 +262,8 @@
         "Tests pass"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: RalphLoop with circuit breaker, drift detector, tool validator, action auditor, checkpointing. 10 tests pass. Total 345 tests."
     },
     {
       "id": "US-016",
@@ -280,8 +280,8 @@
         "Tests pass"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: Core SlimZero class with all parameters, api_client support, 3-line drop-in integration. Already implemented in core.py."
     },
     {
       "id": "US-017",
@@ -297,8 +297,8 @@
         "Tests pass"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: BaseStage interface, PluginRegistry, auto_discover via entry points. 13 tests pass. Total 345 tests."
     },
     {
       "id": "US-018",
@@ -313,8 +313,8 @@
         "Typecheck passes"
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: pyproject.toml with metadata, pip extras, __main__.py CLI, examples/basic.py, plugin entry points."
     }
   ]
 }
