@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-auto环境保护"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]

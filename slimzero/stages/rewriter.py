@@ -99,12 +99,22 @@ class PromptRewriter:
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self._mode = "t5-small"
             logger.info(f"Loaded T5 model: {self.model_name}")
-        except Exception as e:
-            logger.warning(f"T5 initialization failed: {e}")
-            if self.use_ollama_fallback:
-                self._init_ollama()
-            else:
-                self._init_rule_based()
+        except Exception:
+            try:
+                self._rewriter = pipeline(
+                    "summarization",
+                    model=self.model_name,
+                    tokenizer=self.model_name,
+                )
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self._mode = "t5-small"
+                logger.info(f"Loaded T5 model (summarization): {self.model_name}")
+            except Exception as e:
+                logger.warning(f"T5 initialization failed: {e}")
+                if self.use_ollama_fallback:
+                    self._init_ollama()
+                else:
+                    self._init_rule_based()
 
     def _init_ollama(self) -> None:
         """Initialize Ollama fallback connection."""

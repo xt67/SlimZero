@@ -213,6 +213,7 @@ class SlimZero:
             rewriter_out = self._rewriter.process(inp)
             stages_applied.append("prompt_rewriter")
             rewritten_prompt = rewriter_out.prompt
+            inp.prompt = rewritten_prompt
 
             inp.metadata["original_prompt"] = original_prompt
             inp.metadata["rewritten_prompt"] = rewritten_prompt
@@ -220,6 +221,7 @@ class SlimZero:
             guard_out = self._semantic_guard.process(inp)
             semantic_similarity = guard_out.metadata.get("similarity", 1.0)
             validated_prompt = guard_out.prompt
+            inp.prompt = validated_prompt
 
             if inp.few_shot_examples:
                 few_shot_out = self._few_shot_ranker.process(inp)
@@ -237,6 +239,8 @@ class SlimZero:
 
             injector_out = self._response_injector.process(inp)
             stages_applied.append("response_format_injector")
+            if inp.prompt != injector_out.prompt:
+                inp.prompt = injector_out.prompt
             injected_system = injector_out.metadata.get("modified_system_prompt", system_prompt)
             injected_fragment = injector_out.metadata.get("fragment_used")
 
@@ -247,7 +251,9 @@ class SlimZero:
             inp.metadata["injected_fragment"] = injected_fragment
             budget_out = self._budget_enforcer.process(inp)
             stages_applied.append("token_budget_enforcer")
-            final_prompt = budget_out.prompt
+            if inp.prompt != budget_out.prompt:
+                inp.prompt = budget_out.prompt
+            final_prompt = inp.prompt
             final_system = budget_out.metadata.get("modified_system_prompt", injected_system)
 
             sent_tokens = budget_out.token_count or self._estimate_tokens(final_prompt)
