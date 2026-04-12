@@ -49,6 +49,22 @@ A live savings dashboard shows tokens saved per call, cumulative cost reduction,
 
 ---
 
+## Architecture Diagrams
+
+### System Architecture
+
+![SlimZero Architecture](docs/images/slimzero_architecture.svg)
+
+### Agent Loop (Ralph + GSD)
+
+![SlimZero Agent Loop](docs/images/slimzero_agent_loop.svg)
+
+### Request Flowchart
+
+![SlimZero Request Flowchart](docs/images/slimzero_request_flowchart.svg)
+
+---
+
 ## Installation
 
 ```bash
@@ -126,6 +142,256 @@ print(result.total_tokens_saved)
 
 ---
 
+## Comprehensive Examples
+
+### Web Framework Integration
+
+#### Flask API
+
+```python
+from flask import Flask, request, jsonify
+from slimzero import SlimZero
+
+app = Flask(__name__)
+sz = SlimZero(model="gpt-4o")
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.json
+    result = sz.call(
+        prompt=data["message"],
+        system_prompt=data.get("system", "You are a helpful assistant.")
+    )
+    return jsonify({
+        "response": result.response,
+        "savings_percent": result.input_token_savings_percent,
+        "flags": result.flags_raised
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
+```
+
+#### FastAPI API
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from slimzero import SlimZero
+
+app = FastAPI()
+sz = SlimZero(model="gpt-4o")
+
+class ChatRequest(BaseModel):
+    message: str
+    system: str | None = "You are a helpful assistant."
+
+class ChatResponse(BaseModel):
+    response: str
+    savings_percent: float
+    flags: list[str]
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest):
+    result = sz.call(prompt=req.message, system_prompt=req.system)
+    return ChatResponse(
+        response=result.response,
+        savings_percent=result.input_token_savings_percent,
+        flags=result.flags_raised
+    )
+```
+
+#### LangChain Agent
+
+```python
+from langchain_openai import ChatOpenAI
+from slimzero import SlimZero
+
+llm = ChatOpenAI(model="gpt-4o")
+sz = SlimZero(api_client=llm, model="gpt-4o")
+
+def slimzero_llm(prompt: str) -> str:
+    result = sz.call(prompt=prompt)
+    return result.response
+
+# Use slimzero_llm as your LLM in LangChain chains
+```
+
+### CLI Tool
+
+```python
+#!/usr/bin/env python3
+"""SlimZero CLI - Compress prompts from the command line."""
+
+import argparse
+import sys
+from slimzero import SlimZero
+
+def main():
+    parser = argparse.ArgumentParser(description="SlimZero - Zero-overhead token compression")
+    parser.add_argument("prompt", nargs="*", help="Prompt to compress")
+    parser.add_argument("--model", "-m", default="gpt-4o", help="Model to use")
+    parser.add_argument("--compare", "-c", action="store_true", help="Show before/after comparison")
+    
+    args = parser.parse_args()
+    
+    if not args.prompt:
+        print("Enter a prompt:", end=" ")
+        prompt = sys.stdin.read().strip()
+    else:
+        prompt = " ".join(args.prompt)
+    
+    sz = SlimZero(model=args.model)
+    result = sz.call(prompt)
+    
+    if args.compare:
+        print(f"\n📝 Original ({result.original_tokens} tokens):")
+        print(f"   {result.original_prompt}")
+        print(f"\n✨ Compressed ({result.sent_tokens} tokens):")
+        print(f"   {result.sent_prompt}")
+        print(f"\n💰 Savings: {result.input_token_savings_percent:.1f}%")
+    else:
+        print(result.response)
+    
+    if result.flags_raised:
+        print(f"\n⚠️  Flags: {result.flags_raised}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### Batch Processing
+
+```python
+from slimzero import SlimZero
+from concurrent.futures import ThreadPoolExecutor
+
+sz = SlimZero(model="gpt-4o")
+
+prompts = [
+    "Please could you explain what machine learning is?",
+    "Can you maybe give me an example of recursion?",
+    "I was wondering if you could help me understand Python lists?",
+    "What is the difference between a stack and a queue?",
+    "Could you possibly explain what an API is?",
+]
+
+def process_prompt(prompt: str) -> dict:
+    result = sz.call(prompt)
+    return {
+        "prompt": prompt,
+        "response": result.response,
+        "savings_percent": result.input_token_savings_percent
+    }
+
+with ThreadPoolExecutor(max_workers=5) as executor:
+    results = list(executor.map(process_prompt, prompts))
+
+# Summary
+total_savings = sum(r["savings_percent"] for r in results)
+print(f"Average savings: {total_savings / len(results):.1f}%")
+```
+
+### Streaming Responses
+
+```python
+from slimzero import SlimZero
+
+sz = SlimZero(model="gpt-4o")
+
+result = sz.call(
+    prompt="Write a detailed explanation of how async/await works in Python.",
+    stream=True
+)
+
+for chunk in result.stream:
+    print(chunk, end="", flush=True)
+```
+
+### Custom Plugins
+
+```python
+from slimzero.plugins import BaseStage, StageInput, StageOutput
+
+class MarkdownFormatter(BaseStage):
+    """Ensure responses are formatted as markdown."""
+    name = "markdown_formatter"
+    
+    def process(self, inp: StageInput) -> StageOutput:
+        new_prompt = inp.prompt + "\n\nFormat your response in markdown."
+        return StageOutput(prompt=new_prompt, modified=True, notes="added markdown instruction")
+
+sz = SlimZero(
+    model="gpt-4o",
+    extra_stages=[MarkdownFormatter()]
+)
+
+result = sz.call("Explain Python decorators")
+```
+
+### Conversation with History
+
+```python
+from slimzero import SlimZero
+
+sz = SlimZero(
+    model="gpt-4o",
+    history_window=5,  # Keep last 5 turns verbatim
+    hallucination_guard=True
+)
+
+# First turn
+result1 = sz.call("What is gradient descent?")
+print(result1.response)
+
+# Second turn - history is managed automatically
+result2 = sz.call("Show me a Python example.")
+print(result2.response)
+
+# Check compression stats
+print(f"History turns: {len(result2.conversation_history)}")
+print(f"Compressed history: {result2.history_was_compressed}")
+```
+
+### JSON Structured Logging
+
+```python
+from slimzero import SlimZero
+
+sz = SlimZero(
+    model="gpt-4o",
+    log_file="slimzero_sessions.jsonl"
+)
+
+# Each call appends structured JSON to the log file
+result = sz.call("Explain quantum entanglement")
+
+# Or read the log
+import json
+with open("slimzero_sessions.jsonl") as f:
+    for line in f:
+        entry = json.loads(line)
+        print(f"Call {entry['call_id']}: {entry['savings_percent']}% saved")
+```
+
+### Dashboard Mode
+
+```python
+from slimzero import SlimZero
+
+sz = SlimZero(
+    model="gpt-4o",
+    dashboard=True  # Rich live terminal dashboard
+)
+
+# Run several calls and watch the dashboard update
+for topic in ["Python", "Rust", "Go", "JavaScript"]:
+    result = sz.call(f"Explain {topic} in one paragraph.")
+    print(f"\n{topic}: {result.response[:100]}...")
+```
+
+---
+
 ## How the pipeline works
 
 Every call passes through 8 local stages before hitting the API, then 3 local stages after.
@@ -142,7 +408,7 @@ User prompt
 │  Stage 5  History Compressor   T5-small · summarise old turns                │
 │  Stage 6  Format Injector     rule engine · append response fragment          │
 │  Stage 7  Hallucination Scorer heuristics · classify risk · inject if HIGH   │
-│  Stage 8  Budget Enforcer      tiktoken · hard cap · trim by priority         │
+│  Stage 8  Budget Enforcer      tiktoken · hard cap · trim by priority          │
 └───────────────────────────────────────────────────────────────────────────────┘
     │
     ▼
