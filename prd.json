@@ -32,8 +32,8 @@
         "Tests pass"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: IntentExtractor with spaCy integration, output format detection, filler phrase removal, graceful fallback. All 29 tests pass."
     },
     {
       "id": "US-003",
