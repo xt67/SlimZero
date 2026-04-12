@@ -122,8 +122,8 @@
         "Tests pass"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: ResponseFormatInjector with fragment library for all formats, skips existing instructions, appends not prepends. 31 tests pass. Total 156 tests."
     },
     {
       "id": "US-008",
