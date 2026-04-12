@@ -21,6 +21,7 @@ env/
 .coverage
 htmlcov/
 .tox/
+tests/
 
 # Development
 .gsd/
