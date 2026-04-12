@@ -485,23 +485,58 @@ Keep your response brief (2-3 sentences max)."""
         return False
 
     def _call_llm(self, prompt: str) -> str:
-        """Call the LLM API."""
-        client_type = type(self.api_client).__module__.split('.')[0]
+        """
+        Call the LLM API.
+
+        Supports OpenAI, OpenCode, Ollama, and Anthropic SDKs.
+        """
+        if self.api_client is None:
+            return ""
+
+        client_module = type(self.api_client).__module__.split('.')[0]
+        client_class = type(self.api_client).__name__.lower()
 
         try:
-            if client_type == "anthropic":
+            if client_module == "anthropic":
                 response = self.api_client.messages.create(
                     model="claude-sonnet-4-6",
                     max_tokens=512,
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return response.content[0].text
+
+            elif client_module in ("openai", "opencode", "ollama") or "openai" in client_module:
+                response = self.api_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.choices[0].message.content or ""
+
+            elif client_class == "ollama":
+                import urllib.request
+                import json
+                url = "http://localhost:11434/api/generate"
+                data = {
+                    "model": "llama3.2",
+                    "prompt": prompt,
+                    "stream": False,
+                }
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(data).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    return result.get("response", "")
+
             else:
                 response = self.api_client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return response.choices[0].message.content or ""
+
         except Exception as e:
             logger.warning(f"LLM call failed in agent: {e}")
             return ""

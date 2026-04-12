@@ -132,7 +132,12 @@ class SlimZero:
         """
         Call the LLM API.
 
-        Supports OpenAI SDK, Anthropic SDK, and any OpenAI-compatible API.
+        Supports:
+        - OpenAI SDK (openai)
+        - OpenCode (opencode) - OpenAI-compatible
+        - Ollama (ollama) - OpenAI-compatible
+        - Anthropic SDK (anthropic)
+        - Any OpenAI-compatible API client
 
         Args:
             prompt: The user prompt
@@ -153,10 +158,11 @@ class SlimZero:
                 field_name="api_client"
             )
 
-        client_type = type(self.api_client).__module__.split('.')[0]
+        client_module = type(self.api_client).__module__.split('.')[0]
+        client_class = type(self.api_client).__name__.lower()
 
         try:
-            if client_type == "anthropic":
+            if client_module == "anthropic":
                 response = self.api_client.messages.create(
                     model=self.model,
                     max_tokens=1024,
@@ -164,6 +170,37 @@ class SlimZero:
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return response.content[0].text
+
+            elif client_module in ("openai", "opencode", "ollama") or "openai" in client_module:
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                response = self.api_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                )
+                return response.choices[0].message.content or ""
+
+            elif client_class == "ollama":
+                import urllib.request
+                import json
+                url = "http://localhost:11434/api/generate"
+                data = {
+                    "model": self.model,
+                    "prompt": prompt,
+                    "system": system_prompt,
+                    "stream": False,
+                }
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(data).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    return result.get("response", "")
+
             else:
                 messages = []
                 if system_prompt:
@@ -174,6 +211,7 @@ class SlimZero:
                     messages=messages,
                 )
                 return response.choices[0].message.content or ""
+
         except Exception as e:
             logger.error(f"API call failed: {e}")
             raise SlimZeroError(f"API call failed: {e}") from e
