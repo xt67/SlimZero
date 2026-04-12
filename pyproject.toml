@@ -1,0 +1,128 @@
+[build-system]
+requires = ["hatchling", "hatch-auto环境保护"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slimzero"
+version = "0.1.0"
+description = "Zero-overhead prompt compression, response minimisation, hallucination guarding, and autonomous agent orchestration"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "SlimZero Contributors" },
+]
+keywords = [
+    "llm",
+    "prompt",
+    "compression",
+    "optimization",
+    "token",
+    "cost",
+    "savings",
+    "hallucination",
+    "agent",
+    "ralph",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+base = [
+    "spacy>=3.7",
+    "sentence-transformers>=2.7",
+    "tiktoken>=0.7",
+    "transformers>=4.40",
+]
+agent = [
+    "networkx>=3.3",
+]
+dashboard = [
+    "rich>=13.7",
+]
+all = [
+    "spacy>=3.7",
+    "sentence-transformers>=2.7",
+    "tiktoken>=0.7",
+    "transformers>=4.40",
+    "networkx>=3.3",
+    "rich>=13.7",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.3",
+    "mypy>=1.9",
+    "hypothesis>=6.100",
+]
+
+[project.urls]
+Homepage = "https://github.com/xt67/SlimZero"
+Documentation = "https://slimzero.readthedocs.io"
+Repository = "https://github.com/xt67/SlimZero.git"
+Issues = "https://github.com/xt67/SlimZero/issues"
+
+[project.scripts]
+slimzero = "slimzero.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["slimzero"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/slimzero",
+    "/README.md",
+    "/LICENSE",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["slimzero"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
