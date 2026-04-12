@@ -1,0 +1,64 @@
+name: Publish Python Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_to:
+        description: 'Where to publish'
+        required: true
+        default: 'testpypi'
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+          pip install -e ".[all]"
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+      - name: Run type check
+        run: mypy slimzero/
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to TestPyPI
+        if: github.event.inputs.publish_to == 'testpypi' || startsWith(github.ref, 'refs/tags/v')
+        env:
+          TESTPYPI_TOKEN: ${{ secrets.TESTPYPI_TOKEN }}
+        run: |
+          if [ -n "$TESTPYPI_TOKEN" ]; then
+            twine upload --repository testpypi --username __token__ --password $TESTPYPI_TOKEN dist/*
+          else
+            echo "TESTPYPI_TOKEN not set, skipping TestPyPI upload"
+          fi
+
+      - name: Publish to PyPI
+        if: github.event.inputs.publish_to == 'pypi' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          if [ -n "$PYPI_TOKEN" ]; then
+            twine upload --skip-existing --username __token__ --password $PYPI_TOKEN dist/*
+          else
+            echo "PYPI_TOKEN not set, skipping PyPI upload"
+          fi
