@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "slimzero"
-version = "0.1.0"
+version = "0.1.1"
 description = "Zero-overhead prompt compression, response minimisation, hallucination guarding, and autonomous agent orchestration"
 readme = "README.md"
 license = {text = "MIT"}
