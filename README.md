@@ -77,12 +77,12 @@ Autonomous task execution with fault prevention:
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Stage 1: Intent Extractor (spaCy)                        │
-│  - Extract core_task, entities, output_format, constraints  │
+│  - Extract core_task, entities, output_format, constraints    │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Stage 2: Prompt Rewriter (T5-small)                       │
+│  Stage 2: Prompt Rewriter (T5-small)                      │
 │  - Strip filler, merge duplicates, convert to imperative     │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -124,18 +124,18 @@ from slimzero import SlimZero
 
 sz = SlimZero(
     model="claude-sonnet-4-6",       # Target model
-    api_client=my_client,            # Optional: wrap existing client
+    api_client=my_client,              # Optional: wrap existing client
     token_budget=4096,               # Hard token ceiling
-    sim_threshold=0.92,              # Semantic similarity gate
+    sim_threshold=0.92,               # Semantic similarity gate
     few_shot_k=3,                    # Keep top-k few-shot examples
     history_window=4,                 # Recent turns to keep verbatim
     hallucination_guard=True,         # Enable hallucination scoring
-    response_validation=True,         # Validate response intent
+    response_validation=True,          # Validate response intent
     agent_mode=False,                # Enable Ralph loop
     max_agent_steps=20,              # Circuit breaker: max steps
-    drift_threshold=0.75,            # Semantic drift detection
+    drift_threshold=0.75,             # Semantic drift detection
     dashboard=True,                  # Show live savings
-    log_file="slimzero.jsonl",      # Structured log output
+    log_file="slimzero.jsonl",       # Structured log output
 )
 ```
 
@@ -163,6 +163,23 @@ print(result.response)
 - Ollama (local models)
 - Any OpenAI-spec compatible API
 
+## Project Structure
+
+```
+slimzero/
+├── __init__.py          # Package exports
+├── __main__.py          # CLI entry point
+├── core.py              # Main SlimZero class
+├── exceptions.py        # Exception hierarchy
+├── schemas.py           # Data schemas
+├── stages/              # Pipeline stages
+│   ├── intent.py       # Intent extraction
+│   └── semantic_guard.py # Semantic validation
+├── post/                # Post-processing
+├── agent/               # Agent orchestration
+└── plugins/             # Plugin API
+```
+
 ## Benchmarks (Targets)
 
 | Metric | Target |
@@ -181,4 +198,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome! Please submit pull requests or open issues on GitHub.
