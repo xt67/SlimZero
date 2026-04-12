@@ -526,6 +526,69 @@ Plugins auto-discovered via Python entry points (`slimzero.stages` group). Commu
 
 ---
 
+## Contributing
+
+SlimZero is open to contributions! Whether you want to fix bugs, add features, improve documentation, or suggest new ideas — all contributions are welcome.
+
+### Ways to Contribute
+
+- **Bug Reports**: Found an issue? Open an issue on GitHub with details.
+- **Feature Requests**: Have an idea for improvement? Share it!
+- **Pull Requests**: Fork the repo, make your changes, and submit a PR.
+- **Plugins**: Build community plugins using the Plugin API.
+- **Documentation**: Help improve docs, examples, or this README.
+- **Benchmarks**: Add performance benchmarks to prove the token savings.
+
+### Getting Started
+
+```bash
+# Fork and clone the repo
+git clone https://github.com/xt67/SlimZero.git
+cd SlimZero
+
+# Install in development mode
+pip install -e .
+
+# Install dev dependencies
+pip install pytest mypy ruff
+
+# Run tests
+pytest
+
+# Run typecheck
+mypy slimzero/
+
+# Format code
+ruff check --fix slimzero/
+```
+
+### Project Structure
+
+```
+slimzero/
+├── stages/          # Pipeline stages (compression, guard, scoring, etc.)
+├── post/            # Post-processing (validation, flagging, logging)
+├── agent/           # Ralph loop + GSD task graph
+├── plugins/         # Plugin API and base classes
+├── dashboard/       # Rich live dashboard
+├── core.py          # Main SlimZero class
+└── schemas.py       # Data models
+```
+
+### Code Style
+
+- Follow PEP 8
+- Use type hints
+- Add docstrings to public functions
+- Keep functions focused and small
+- Write tests for new features
+
+### Questions?
+
+Feel free to open an issue or reach out. We aim to respond within 48 hours.
+
+---
+
 ## License
 
 MIT — use it in anything.
