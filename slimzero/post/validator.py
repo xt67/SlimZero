@@ -9,15 +9,9 @@ import logging
 from typing import Optional, Tuple
 
 from slimzero.schemas import IntentSchema, HallucinationRiskTier
+from slimzero.utils import get_embedding_model
 
 logger = logging.getLogger(__name__)
-
-try:
-    from sentence_transformers import SentenceTransformer
-    ST_AVAILABLE = True
-except ImportError:
-    ST_AVAILABLE = False
-    logger.warning("sentence-transformers not available. Response Validator will use keyword fallback.")
 
 DEFAULT_THRESHOLD = 0.60
 MAX_RESPONSE_TOKENS = 512
@@ -27,7 +21,7 @@ class ResponseValidator:
     """
     Validates that LLM responses address the parsed intent.
 
-    Uses cosine similarity between intent core task and response embeddings.
+    Uses shared sentence-transformers model for cosine similarity.
     Response always returned to user - never suppressed.
     """
 
@@ -45,22 +39,11 @@ class ResponseValidator:
         """
         self.threshold = max(0.0, min(1.0, threshold))
         self.model_name = model_name
-        self._model: Optional[SentenceTransformer] = None
-
-        if ST_AVAILABLE:
-            self._init_model()
-
-    def _init_model(self) -> None:
-        """Initialize sentence transformer model."""
-        try:
-            self._model = SentenceTransformer(self.model_name)
-            logger.info(f"Loaded ResponseValidator model: {self.model_name}")
-        except Exception as e:
-            logger.warning(f"Failed to load model '{self.model_name}': {e}")
+        self._embedding_model = get_embedding_model(model_name)
 
     def _is_available(self) -> bool:
         """Check if sentence-transformers is available."""
-        return ST_AVAILABLE and self._model is not None
+        return self._embedding_model.is_available
 
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count."""
@@ -82,25 +65,8 @@ class ResponseValidator:
         return len(intersection) / len(union) if union else 0.0
 
     def _compute_embedding_similarity(self, intent: str, response: str) -> float:
-        """Compute embedding-based similarity."""
-        if not self._model:
-            return self._compute_keyword_similarity(intent, response)
-
-        try:
-            embeddings = self._model.encode([intent, response])
-            emb1, emb2 = embeddings[0], embeddings[1]
-
-            dot_product = float(sum(a * b for a, b in zip(emb1, emb2)))
-            norm1 = float(sum(a * a for a in emb1) ** 0.5)
-            norm2 = float(sum(a * a for a in emb2) ** 0.5)
-
-            if norm1 == 0 or norm2 == 0:
-                return 0.0
-
-            return dot_product / (norm1 * norm2)
-        except Exception as e:
-            logger.warning(f"Embedding computation failed: {e}")
-            return self._compute_keyword_similarity(intent, response)
+        """Compute embedding-based similarity using shared model."""
+        return self._embedding_model.similarity(intent, response)
 
     def validate(
         self,

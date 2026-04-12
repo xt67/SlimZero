@@ -190,8 +190,9 @@ class SavingsStats:
 
     @property
     def estimated_cost_savings(self) -> float:
-        """Calculate estimated cost savings in USD."""
-        return self.total_savings * 0.000005
+        """Calculate estimated cost savings in USD using default pricing."""
+        default_pricing = self.model_pricing.get("default", {"input": 0.000005, "output": 0.000015})
+        return self.total_savings * default_pricing["input"]
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON export."""

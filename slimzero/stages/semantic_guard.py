@@ -11,25 +11,19 @@ import logging
 
 from slimzero.schemas import StageInput, StageOutput
 from slimzero.exceptions import SlimZeroSemanticRejection
+from slimzero.utils import get_embedding_model
 
 logger = logging.getLogger(__name__)
 
 MIN_THRESHOLD = 0.80
 DEFAULT_THRESHOLD = 0.92
 
-try:
-    from sentence_transformers import SentenceTransformer
-    ST_AVAILABLE = True
-except ImportError:
-    ST_AVAILABLE = False
-    logger.warning("sentence-transformers not available. Semantic Guard will use fallback.")
-
 
 class SemanticGuard:
     """
     Validates that rewritten prompts preserve semantic meaning.
 
-    Uses sentence-transformers (all-MiniLM-L6-v2) to compute cosine similarity.
+    Uses shared sentence-transformers model (all-MiniLM-L6-v2) to compute cosine similarity.
     This stage cannot be disabled - it is the one inviolable safety rule in SlimZero.
     """
 
@@ -55,19 +49,11 @@ class SemanticGuard:
 
         self.threshold = threshold
         self.model_name = model_name
-        self._model: Optional[SentenceTransformer] = None
-
-        if ST_AVAILABLE:
-            try:
-                self._model = SentenceTransformer(model_name)
-                logger.info(f"Loaded SentenceTransformer model: {model_name}")
-            except Exception as e:
-                logger.warning(f"Failed to load model '{model_name}': {e}")
-                self._model = None
+        self._embedding_model = get_embedding_model(model_name)
 
     def _is_available(self) -> bool:
         """Check if sentence-transformers is available."""
-        return ST_AVAILABLE and self._model is not None
+        return self._embedding_model.is_available
 
     def compute_similarity(self, text1: str, text2: str) -> float:
         """
@@ -80,26 +66,7 @@ class SemanticGuard:
         Returns:
             Cosine similarity score (0.0-1.0).
         """
-        if not self._is_available():
-            return self._fallback_similarity(text1, text2)
-
-        try:
-            if self._model is None:
-                return self._fallback_similarity(text1, text2)
-            embeddings = self._model.encode([text1, text2])
-            emb1, emb2 = embeddings[0], embeddings[1]
-
-            dot_product = float(sum(a * b for a, b in zip(emb1, emb2)))
-            norm1 = float(sum(a * a for a in emb1) ** 0.5)
-            norm2 = float(sum(a * a for a in emb2) ** 0.5)
-
-            if norm1 == 0 or norm2 == 0:
-                return 0.0
-
-            return dot_product / (norm1 * norm2)
-        except Exception as e:
-            logger.warning(f"Embedding computation failed: {e}")
-            return self._fallback_similarity(text1, text2)
+        return self._embedding_model.similarity(text1, text2)
 
     def _fallback_similarity(self, text1: str, text2: str) -> float:
         """

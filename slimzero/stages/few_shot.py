@@ -10,15 +10,9 @@ import logging
 from typing import Optional, List, Tuple
 
 from slimzero.schemas import StageInput, StageOutput
+from slimzero.utils import get_embedding_model
 
 logger = logging.getLogger(__name__)
-
-try:
-    from sentence_transformers import SentenceTransformer
-    ST_AVAILABLE = True
-except ImportError:
-    ST_AVAILABLE = False
-    logger.warning("sentence-transformers not available. Few-Shot Ranker will use keyword-based fallback.")
 
 DEFAULT_K = 3
 MIN_K = 1
@@ -34,7 +28,7 @@ class FewShotRanker:
     """
     Ranks and filters few-shot examples by relevance to the current query.
 
-    Uses cosine similarity with sentence-transformers (all-MiniLM-L6-v2).
+    Uses shared sentence-transformers model for cosine similarity.
     Falls back to keyword matching if transformers unavailable.
     """
 
@@ -52,19 +46,11 @@ class FewShotRanker:
         """
         self.k = max(MIN_K, min(k, 10))
         self.model_name = model_name
-        self._model: Optional[SentenceTransformer] = None
-
-        if ST_AVAILABLE:
-            try:
-                self._model = SentenceTransformer(model_name)
-                logger.info(f"Loaded Few-Shot Ranker model: {model_name}")
-            except Exception as e:
-                logger.warning(f"Failed to load model '{model_name}': {e}")
-                self._model = None
+        self._embedding_model = get_embedding_model(model_name)
 
     def _is_available(self) -> bool:
         """Check if sentence-transformers is available."""
-        return ST_AVAILABLE and self._model is not None
+        return self._embedding_model.is_available
 
     def _detect_examples(self, text: str) -> List[str]:
         """Detect few-shot examples using pattern matching."""
@@ -118,26 +104,15 @@ class FewShotRanker:
         return overlap / len(query_words)
 
     def _rank_with_embeddings(self, examples: List[str], query: str) -> List[Tuple[str, float]]:
-        """Rank examples using sentence embeddings."""
-        if not self._model or not examples:
-            return [(ex, self._keyword_score(ex, query)) for ex in examples]
+        """Rank examples using shared sentence embeddings model."""
+        if not examples:
+            return []
 
         try:
-            embeddings = self._model.encode([query] + examples)
-            query_emb = embeddings[0]
-
             ranked: List[Tuple[str, float]] = []
-            for i, ex_emb in enumerate(embeddings[1:], 1):
-                dot = sum(a * b for a, b in zip(query_emb, ex_emb))
-                norm1 = sum(a * a for a in query_emb) ** 0.5
-                norm2 = sum(a * a for a in ex_emb) ** 0.5
-
-                if norm1 == 0 or norm2 == 0:
-                    score = 0.0
-                else:
-                    score = dot / (norm1 * norm2)
-
-                ranked.append((examples[i - 1], score))
+            for ex in examples:
+                score = self._embedding_model.similarity(query, ex)
+                ranked.append((ex, score))
 
             ranked.sort(key=lambda x: x[1], reverse=True)
             return ranked
