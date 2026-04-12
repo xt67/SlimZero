@@ -1,19 +1,320 @@
 {
-  "title": "SlimZero v1",
-  "description": "SlimZero - A minimalist web platform",
-  "branchName": "main",
+  "project": "SlimZero",
+  "branchName": "ralph/slimzero-core-pipeline",
+  "description": "SlimZero v1 - Zero-overhead prompt compression, response minimisation, hallucination guarding, and autonomous agent orchestration",
   "userStories": [
     {
-      "id": "story-1",
-      "title": "Project Setup",
-      "description": "Initialize project with ralph and GSD tools, set up development environment",
+      "id": "US-001",
+      "title": "Create SlimZero package structure and exception hierarchy",
+      "description": "As a developer, I need a well-organized package structure with proper exception handling.",
       "acceptanceCriteria": [
-        "Ralph and GSD are configured and ready to use",
-        "Project structure is initialized",
-        "Development environment is ready"
+        "Create slimzero/ package with __init__.py",
+        "Create slimzero/exceptions.py with SlimZeroError base class and all subclasses (SlimZeroInputError, SlimZeroRewriteError, SlimZeroSemanticRejection, SlimZeroBudgetWarning, SlimZeroResponseWarning, SlimZeroHallucinationFlag, SlimZeroAgentError)",
+        "Create slimzero/schemas.py with IntentSchema, StageInput, StageOutput, SlimZeroResult dataclasses",
+        "Create pyproject.toml with package metadata and dependencies",
+        "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Implement Intent Extractor stage (Stage 1)",
+      "description": "As a developer, I need to parse user prompts to extract structured intent for downstream processing.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/intent.py with IntentExtractor class using spaCy",
+        "Extract core_task, entities, output_format, and constraints from raw prompt",
+        "Output IntentSchema dataclass that is serializable and hashable",
+        "Handle spaCy unavailable case gracefully (use raw text as core_task)",
+        "Add spaCy to pyproject.toml dependencies",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Implement Semantic Guard stage (Stage 3)",
+      "description": "As a developer, I need a safety mechanism to ensure rewritten prompts preserve meaning.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/semantic_guard.py with SemanticGuard class using sentence-transformers (all-MiniLM-L6-v2)",
+        "Compute cosine similarity between original and rewritten prompts",
+        "Default threshold 0.92, configurable via sim_threshold config",
+        "Accept rewrite if similarity >= threshold, reject if below",
+        "Enforce minimum threshold of 0.80 (non-bypassable rule)",
+        "Add sentence-transformers to pyproject.toml dependencies",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Implement Prompt Rewriter stage (Stage 2)",
+      "description": "As a developer, I need to compress prompts into minimal imperative form while preserving meaning.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/rewriter.py with PromptRewriter class using T5-small",
+        "Apply rewriting strategies: strip filler phrases, merge duplicate sentences, convert hedged to imperative",
+        "Hard constraint: rewritten prompt must be <= 85% of original token count",
+        "Fall back to Ollama (qwen3 1.7B) if T5 unavailable",
+        "Never write directly to API payload - Semantic Guard validates first",
+        "Add transformers to pyproject.toml dependencies",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Implement Few-Shot Ranker stage (Stage 4)",
+      "description": "As a developer, I need to retain only the most relevant few-shot examples to reduce token overhead.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/few_shot.py with FewShotRanker class",
+        "Detect few-shot blocks via pattern matching (Q:/A:, numbered, XML-tagged)",
+        "Rank examples by cosine similarity to current query using MiniLM",
+        "Retain top-k examples (default k=3, configurable)",
+        "Preserve at least 1 example if any present",
+        "Skip if fewer than 2 examples detected",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Implement History Compressor stage (Stage 5)",
+      "description": "As a developer, I need to compress conversation history to manage context window efficiently.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/history.py with HistoryCompressor class",
+        "Keep last N turns verbatim (default N=4, configurable, min 2)",
+        "Summarize older turns with T5-small into 'Prior context:' block",
+        "Cache summaries and regenerate only when turn count threshold crossed",
+        "Summary token budget: max 20% of total prompt budget",
+        "Fallback to truncation if summarization fails or produces longer output",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Implement Response Format Injector stage (Stage 6)",
+      "description": "As a developer, I need to precondition the LLM to respond minimally without preamble or padding.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/injector.py with ResponseFormatInjector class",
+        "Append instruction fragment to system prompt based on output_format from Intent Extractor",
+        "Fragments library: general, code, list, explain (each <= 12 tokens)",
+        "Append (not prepend) to avoid displacing developer's system prompt",
+        "Create default system prompt if none exists",
+        "Skip injection if developer's prompt already contains response-length instructions",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Implement Hallucination Risk Scorer stage (Stage 7)",
+      "description": "As a developer, I need to classify query hallucination risk and inject uncertainty instructions for high-risk queries.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/hallucination.py with HallucinationRiskScorer class",
+        "Implement 50-rule heuristic classifier (regex + keyword patterns, no model inference)",
+        "Classify as HIGH: specific dates, numbers, citations, 'latest'/'current' facts -> inject uncertainty instruction",
+        "Classify as MEDIUM: named entities with verifiable attributes -> inject verification instruction",
+        "Classify as LOW: creative, open-ended, opinion queries -> no action",
+        "Default to MEDIUM on classifier errors",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Implement Token Budget Enforcer stage (Stage 8)",
+      "description": "As a developer, I need to enforce a hard token ceiling on prompts with priority-based trimming.",
+      "acceptanceCriteria": [
+        "Create slimzero/stages/budget.py with TokenBudgetEnforcer class using tiktoken",
+        "Support cl100k_base, o200k_base, and claude tokeniser approximations",
+        "Trim priority (first to last): injected fragments, old history summary, low-ranked examples beyond top-1, compressed rewrite",
+        "Never trim: core task, most recent 2 turns, critical entities",
+        "Proceed over budget with warning if core task would be trimmed",
+        "Add tiktoken to pyproject.toml dependencies",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Implement Response Validator (post-processing)",
+      "description": "As a developer, I need to validate that LLM responses actually address the parsed intent.",
+      "acceptanceCriteria": [
+        "Create slimzero/post/validator.py with ResponseValidator class",
+        "Embed IntentSchema.core_task and first 512 tokens of response using MiniLM",
+        "Compute cosine similarity, threshold 0.60 (responses allowed creative form)",
+        "Flag response with SlimZeroWarning.OFF_TASK if below threshold",
+        "Response always returned to user - never suppressed",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Implement Hallucination Flag (post-processing)",
+      "description": "As a developer, I need to detect confident assertions in responses that correspond to high-risk query types.",
+      "acceptanceCriteria": [
+        "Create slimzero/post/flagger.py with HallucinationFlagger class",
+        "Implement 80-pattern heuristic library for date assertions, numeric specifics, citation phrases, authority claims",
+        "Highlight matches in response metadata with character offsets",
+        "No second API call - purely local signal",
+        "False positives acceptable - SlimZero errs toward flagging",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Implement Savings Logger with JSON export",
+      "description": "As a developer, I need to track per-call and cumulative statistics for token savings.",
+      "acceptanceCriteria": [
+        "Create slimzero/post/logger.py with SavingsLogger class",
+        "Track: original_input_tokens, sent_input_tokens, delta_input, estimated_output_tokens, stages_applied, semantic_similarity, hallucination_risk_tier, response_validated, flags_raised, cumulative_tokens_saved, cumulative_estimated_cost_usd",
+        "Exportable: JSON per session, Markdown summary",
+        "Log every call with structured JSON including timestamp, stage, context",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Implement SlimZero core pipeline runner",
+      "description": "As a developer, I need a unified pipeline that runs all stages in order and returns the optimized result.",
+      "acceptanceCriteria": [
+        "Create slimzero/core.py with SlimZero class and run_pipeline method",
+        "Pipeline order: Intent Extractor -> Prompt Rewriter -> Semantic Guard -> Few-Shot Ranker -> History Compressor -> Response Format Injector -> Hallucination Risk Scorer -> Token Budget Enforcer -> LLM Call -> Response Validator -> Hallucination Flag -> Savings Logger",
+        "Graceful degradation: original prompt sent if all stages fail",
+        "Apply all fault prevention rules per PRD section 9.3",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Implement GSD task graph with networkx",
+      "description": "As a developer, I need a task decomposition layer that breaks goals into checkpointed sub-tasks.",
+      "acceptanceCriteria": [
+        "Create slimzero/agent/gsd.py with GSDTaskGraph class using networkx DiGraph",
+        "Each node: task_id, description, status, dependencies, retry_count, output",
+        "Task runs only when all dependencies complete",
+        "LLM call (compressed) for initial decomposition only",
+        "Validate decomposition: valid JSON, no circular dependencies",
+        "Checkpoint: serialize to JSON after every status change",
+        "Resume from first pending node on restart",
+        "Add networkx to pyproject.toml dependencies",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Implement Ralph agent loop integration with circuit breakers",
+      "description": "As a developer, I need Ralph autonomous agent loop with SlimZero enhancements for fault prevention.",
+      "acceptanceCriteria": [
+        "Create slimzero/agent/ralph.py with RalphLoop class",
+        "Implement circuit breaker: max_steps (default 20), max_retries_per_step (default 3), max_total_tokens (configurable)",
+        "Semantic drift detector: compare plan embedding to goal embedding, inject re-grounding if similarity < 0.75 for 3 consecutive steps",
+        "Tool-call validator: check required arguments present, types correct, known tool name before execution",
+        "Action auditor: log every tool call with timestamp, tool_name, arguments, result_summary, tokens_used",
+        "Checkpoint state before HumanEscalation",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Implement drop-in API with three-line integration",
+      "description": "As a developer, I need the simplest possible integration: three lines of code to use SlimZero.",
+      "acceptanceCriteria": [
+        "from slimzero import SlimZero",
+        "sz = SlimZero(model='claude-sonnet-4-6')",
+        "response = sz.call(prompt='...')",
+        "SlimZero wraps existing API client transparently",
+        "Support api_client parameter for passing existing Anthropic/OpenAI client",
+        "Support all config parameters: token_budget, sim_threshold, few_shot_k, history_window, modules, hallucination_guard, response_validation, agent_mode, max_agent_steps, max_retries, drift_threshold, dashboard, log_file",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Implement plugin API with BaseStage interface",
+      "description": "As a developer, I need to extend SlimZero with custom pipeline stages via the plugin API.",
+      "acceptanceCriteria": [
+        "Create slimzero/plugins/__init__.py with BaseStage, StageInput, StageOutput classes",
+        "Plugin contract: must not raise exceptions that halt pipeline, must not make external API calls",
+        "Plugins that modify prompts must set modified=True so semantic guard re-runs",
+        "Auto-discovery via Python entry points (slimzero.stages group)",
+        "Manual registration via extra_stages parameter",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Create PyPI package and examples",
+      "description": "As a developer, I need a pip-installable package with examples for quick adoption.",
+      "acceptanceCriteria": [
+        "Update pyproject.toml with proper package metadata (name, version, description, author, license)",
+        "Configure pip extras: slimzero[agent], slimzero[dashboard], slimzero[all]",
+        "Create examples/ directory with integration examples for Flask, FastAPI, LangChain, bare API",
+        "Create slimzero/__main__.py for CLI entry point",
+        "Create docs/ with MkDocs configuration",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
     }
   ]
 }
