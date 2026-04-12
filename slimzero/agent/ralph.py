@@ -6,7 +6,7 @@ Autonomous agent loop with circuit breakers and semantic drift detection.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, Dict, Any, List, Callable, AnyStr
 
@@ -99,7 +99,7 @@ class ActionAuditor:
     ) -> None:
         """Log an action."""
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "action_type": action_type.value,
             "step": step,
             "tool_name": tool_name,

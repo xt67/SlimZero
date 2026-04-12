@@ -7,7 +7,7 @@ Breaks goals into checkpointed sub-tasks with dependency management.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Set
@@ -50,7 +50,7 @@ class GSDTask:
         self.retry_count = 0
         self.output: Optional[Any] = None
         self.error: Optional[str] = None
-        self.created_at = datetime.utcnow().isoformat()
+        self.created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         self.completed_at: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -79,7 +79,7 @@ class GSDTask:
         task.retry_count = data.get("retry_count", 0)
         task.output = data.get("output")
         task.error = data.get("error")
-        task.created_at = data.get("created_at", datetime.utcnow().isoformat())
+        task.created_at = data.get("created_at", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
         task.completed_at = data.get("completed_at")
         return task
 
@@ -248,7 +248,7 @@ class GSDTaskGraph:
         task.error = error
 
         if status == TaskStatus.COMPLETED:
-            task.completed_at = datetime.utcnow().isoformat()
+            task.completed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         if status == TaskStatus.FAILED:
             task.retry_count += 1
@@ -261,7 +261,7 @@ class GSDTaskGraph:
 
         checkpoint_data = {
             "goal": self.goal,
-            "checkpoint_at": datetime.utcnow().isoformat(),
+            "checkpoint_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "tasks": {tid: task.to_dict() for tid, task in self._tasks.items()},
         }
 

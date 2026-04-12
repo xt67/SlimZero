@@ -1,0 +1,65 @@
+site_name: SlimZero
+site_description: Zero-overhead prompt compression for LLM APIs
+site_url: https://slimzero.readthedocs.io
+repo_url: https://github.com/xt67/SlimZero
+repo_name: xt67/SlimZero
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [..]
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quick Start: quickstart.md
+  - API Reference:
+    - Core: api/core.md
+    - Stages: api/stages.md
+    - Post-processing: api/post.md
+    - Agent: api/agent.md
+    - Plugins: api/plugins.md
+  - Configuration: configuration.md
+  - Examples: examples.md
+  - Architecture: architecture.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.mark
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/xt67/SlimZero
