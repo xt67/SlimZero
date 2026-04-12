@@ -27,7 +27,7 @@ TRIM_PRIORITY = [
 ]
 
 MIN_CORE_TASK_TOKENS = 5
-DEFAULT_BUDGET = 512
+DEFAULT_BUDGET = 4096
 
 
 class TokenBudgetEnforcer:
@@ -54,7 +54,7 @@ class TokenBudgetEnforcer:
             encodings: List of encoding names to try (cl100k_base, o200k_base, etc.)
         """
         self.token_budget = max(50, min(token_budget, 100000))
-        self.encodings = encodings or ["cl100k_base", "o200k_base", "oai编码替代"]
+        self.encodings = encodings or ["cl100k_base", "o200k_base", "p50k_base"]
         self._encoder: tiktoken.Encoding = None
         self._encoding_name: Optional[str] = None
 

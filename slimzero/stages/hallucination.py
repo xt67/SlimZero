@@ -171,7 +171,7 @@ class HallucinationRiskScorer:
             Tuple of (risk_tier, high_matches, medium_matches).
         """
         if not text or not text.strip():
-            return HallucinationRiskTier.MEDIUM, 0, 0
+            return HallucinationRiskTier.LOW, 0, 0
 
         tier = self._classify(text)
         high_matches = self._count_matches(text, self._high_patterns)

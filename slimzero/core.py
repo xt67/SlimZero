@@ -21,6 +21,7 @@ from slimzero.exceptions import (
     SlimZeroError,
     SlimZeroInputError,
 )
+from slimzero.utils import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ from slimzero.post.logger import SavingsLogger
 from slimzero.agent.ralph import RalphLoop
 from slimzero.dashboard import get_dashboard, SlimZeroDashboard
 
-DEFAULT_TOKEN_BUDGET = 512
+DEFAULT_TOKEN_BUDGET = 4096
 
 
 class SlimZero:
@@ -120,8 +121,8 @@ class SlimZero:
             self._dashboard.start()
 
     def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count."""
-        return len(text.split())
+        """Count tokens using tiktoken with word-based fallback."""
+        return count_tokens(text)
 
     def _call_llm(
         self,
@@ -131,31 +132,51 @@ class SlimZero:
         """
         Call the LLM API.
 
+        Supports OpenAI SDK, Anthropic SDK, and any OpenAI-compatible API.
+
         Args:
             prompt: The user prompt
             system_prompt: Optional system prompt
 
         Returns:
             LLM response text
+
+        Raises:
+            SlimZeroInputError: If no API client is configured (except for mock mode)
         """
-        if self.api_client:
-            try:
+        if self.api_client is None:
+            if self.model == "mock":
+                return f"[Mock response for: {prompt[:50]}...]"
+            raise SlimZeroInputError(
+                "No API client configured. Pass api_client when initializing SlimZero, "
+                "or use model='mock' for testing.",
+                field_name="api_client"
+            )
+
+        client_type = type(self.api_client).__module__.split('.')[0]
+
+        try:
+            if client_type == "anthropic":
+                response = self.api_client.messages.create(
+                    model=self.model,
+                    max_tokens=1024,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.content[0].text
+            else:
                 messages = []
                 if system_prompt:
                     messages.append({"role": "system", "content": system_prompt})
                 messages.append({"role": "user", "content": prompt})
-
                 response = self.api_client.chat.completions.create(
                     model=self.model,
                     messages=messages,
                 )
-                content: str = response.choices[0].message.content
-                return content
-            except Exception as e:
-                logger.warning(f"API call failed: {e}")
-                return f"[API Error: {e}]"
-
-        return f"[Mock response for: {prompt[:50]}...]"
+                return response.choices[0].message.content or ""
+        except Exception as e:
+            logger.error(f"API call failed: {e}")
+            raise SlimZeroError(f"API call failed: {e}") from e
 
     def call(
         self,

@@ -5,6 +5,7 @@ Task decomposition layer using networkx DiGraph.
 Breaks goals into checkpointed sub-tasks with dependency management.
 """
 
+import hashlib
 import json
 import logging
 from datetime import datetime, timezone
@@ -118,7 +119,8 @@ class GSDTaskGraph:
             self._fallback_tasks: Dict[str, GSDTask] = {}
 
         self._tasks: Dict[str, GSDTask] = {}
-        self._checkpoint_path = self.checkpoint_dir / f"gsd_{hash(goal)}.json"
+        goal_hash = hashlib.sha256(goal.encode()).hexdigest()[:16]
+        self._checkpoint_path = self.checkpoint_dir / f"gsd_{goal_hash}.json"
 
     def _ensure_checkpoint_dir(self) -> None:
         """Ensure checkpoint directory exists."""

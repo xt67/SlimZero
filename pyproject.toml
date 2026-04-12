@@ -36,13 +36,14 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = []
-
-[project.optional-dependencies]
-base = [
+dependencies = [
     "spacy>=3.7",
     "sentence-transformers>=2.7",
     "tiktoken>=0.7",
+]
+
+[project.optional-dependencies]
+transformers = [
     "transformers>=4.40",
 ]
 agent = [
@@ -52,9 +53,6 @@ dashboard = [
     "rich>=13.7",
 ]
 all = [
-    "spacy>=3.7",
-    "sentence-transformers>=2.7",
-    "tiktoken>=0.7",
     "transformers>=4.40",
     "networkx>=3.3",
     "rich>=13.7",

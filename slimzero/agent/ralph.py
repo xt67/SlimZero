@@ -335,17 +335,180 @@ class RalphLoop:
             }
 
         except SlimZeroDriftHalt as e:
-            logger.warning(f"Drift halt: {e}")
+            checkpoint_path = self._checkpoint_state()
+            logger.warning(f"Drift halt: {e}. Checkpoint saved to {checkpoint_path}")
             return {
                 "result": "drift_detected",
                 "similarity": e.drift_similarity,
                 "steps": self._step_count,
+                "checkpoint": checkpoint_path,
                 "audit_log": self._auditor.export_log(),
             }
 
     def _execute_step(self, goal: str) -> Dict[str, Any]:
-        """Execute a single step. Override for actual implementation."""
-        return {"done": True, "plan": goal}
+        """
+        Execute a single step in the observe-plan-act-reflect loop.
+
+        Args:
+            goal: The overall goal being pursued.
+
+        Returns:
+            Dict with step result including done status, plan, and action taken.
+        """
+        if self.api_client is None:
+            return {"done": True, "plan": goal, "action": "no_api_client"}
+
+        try:
+            context = self._build_context()
+            plan_prompt = self._build_plan_prompt(goal, context)
+            plan_response = self._call_llm(plan_prompt)
+            plan = self._parse_plan(plan_response)
+
+            if self._detect_drift(plan):
+                plan = self._reground(goal)
+
+            action = self._select_action(plan)
+            result = self._execute_action(action)
+
+            self._reflect(result)
+
+            done = self._is_goal_complete(result, goal)
+            return {
+                "done": done,
+                "plan": plan,
+                "action": action,
+                "result": result,
+                "tokens_used": self._estimate_tokens(plan_response + str(result)),
+            }
+
+        except Exception as e:
+            logger.warning(f"Step execution failed: {e}")
+            return {"done": True, "plan": goal, "action": "error", "error": str(e)}
+
+    def _build_context(self) -> str:
+        """Build context from audit log and task graph."""
+        audit_entries = self._auditor.get_log()
+        recent_actions = []
+
+        for entry in audit_entries[-5:]:
+            action_type = entry.get("action_type", "")
+            summary = entry.get("result_summary", "")
+            if summary:
+                recent_actions.append(f"- {action_type}: {summary}")
+
+        if recent_actions:
+            return "\n".join(recent_actions)
+        return "No prior actions taken yet."
+
+    def _build_plan_prompt(self, goal: str, context: str) -> str:
+        """Build the planning prompt for LLM."""
+        return f"""You are Ralph, an autonomous agent working on this goal:
+
+GOAL: {goal}
+
+RECENT ACTIONS:
+{context}
+
+Based on the goal and recent actions, what is the next step? Be specific and actionable.
+If the goal appears complete, state that clearly.
+Keep your response brief (2-3 sentences max)."""
+
+    def _parse_plan(self, response: str) -> str:
+        """Parse LLM response to extract plan."""
+        if not response:
+            return ""
+        lines = response.strip().split('\n')
+        for line in lines:
+            if line.strip() and not line.strip().startswith('-'):
+                return line.strip()
+        return response.strip()[:200]
+
+    def _reground(self, goal: str) -> str:
+        """Re-ground agent to original goal."""
+        self._consecutive_drift_count = 0
+        return f"Returning to original goal: {goal[:100]}"
+
+    def _select_action(self, plan: str) -> Dict[str, Any]:
+        """Select and validate an action based on plan."""
+        action = {
+            "type": "respond",
+            "content": plan,
+        }
+
+        keywords = ["search", "find", "look up", "google"]
+        for kw in keywords:
+            if kw.lower() in plan.lower():
+                action["type"] = "tool_call"
+                action["tool"] = "search"
+                action["args"] = {"query": plan}
+                break
+
+        if action.get("tool"):
+            self._validate_tool_call(action["tool"], action.get("args", {}))
+
+        return action
+
+    def _execute_action(self, action: Dict[str, Any]) -> str:
+        """Execute the selected action."""
+        action_type = action.get("type", "respond")
+
+        if action_type == "respond":
+            return action.get("content", "")
+        elif action_type == "tool_call":
+            tool = action.get("tool", "")
+            args = action.get("args", {})
+            self._auditor.log(ActionType.TOOL_CALL, tool_name=tool, arguments=args, step=self._step_count)
+            return f"[Tool {tool} called with {args}]"
+        else:
+            return action.get("content", "")
+
+    def _reflect(self, result: str) -> None:
+        """Reflect on action result and update state."""
+        self._auditor.log(
+            ActionType.THINK,
+            result_summary=result[:100] if result else "No result",
+            step=self._step_count,
+        )
+
+    def _is_goal_complete(self, result: str, goal: str) -> bool:
+        """Check if goal appears complete."""
+        completion_phrases = ["goal complete", "task done", "finished", "all done"]
+        result_lower = result.lower() if result else ""
+
+        for phrase in completion_phrases:
+            if phrase in result_lower:
+                return True
+
+        if self._step_count >= self.max_steps:
+            return True
+
+        return False
+
+    def _call_llm(self, prompt: str) -> str:
+        """Call the LLM API."""
+        client_type = type(self.api_client).__module__.split('.')[0]
+
+        try:
+            if client_type == "anthropic":
+                response = self.api_client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=512,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.content[0].text
+            else:
+                response = self.api_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.choices[0].message.content or ""
+        except Exception as e:
+            logger.warning(f"LLM call failed in agent: {e}")
+            return ""
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count."""
+        return len(text.split())
 
     def get_stats(self) -> Dict[str, Any]:
         """Get agent statistics."""
