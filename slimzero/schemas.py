@@ -180,6 +180,7 @@ class SavingsStats:
     total_input_tokens_sent: int = 0
     total_output_tokens: int = 0
     total_savings: int = 0
+    model: str = "default"
 
     model_pricing: Dict[str, Dict[str, float]] = field(default_factory=lambda: {
         "claude-sonnet-4-6": {"input": 0.000003, "output": 0.000015},
@@ -190,9 +191,9 @@ class SavingsStats:
 
     @property
     def estimated_cost_savings(self) -> float:
-        """Calculate estimated cost savings in USD using default pricing."""
-        default_pricing = self.model_pricing.get("default", {"input": 0.000005, "output": 0.000015})
-        return self.total_savings * default_pricing["input"]
+        """Calculate estimated cost savings in USD using active model pricing."""
+        model_pricing = self.model_pricing.get(self.model, self.model_pricing["default"])
+        return self.total_savings * model_pricing["input"]
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON export."""

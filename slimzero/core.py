@@ -95,7 +95,7 @@ class SlimZero:
         self._budget_enforcer = TokenBudgetEnforcer(token_budget=self.token_budget)
         self._response_validator = ResponseValidator()
         self._hallucination_flagger = HallucinationFlagger()
-        self._savings_logger = SavingsLogger()
+        self._savings_logger = SavingsLogger(model=self.model)
 
         self._ralph_loop: Optional[RalphLoop] = None
         if agent_mode:
@@ -112,6 +112,7 @@ class SlimZero:
             max_retries_per_step=self.max_retries,
             drift_threshold=self.drift_threshold,
             api_client=self.api_client,
+            model=self.model,
         )
 
     def _init_dashboard(self) -> None:

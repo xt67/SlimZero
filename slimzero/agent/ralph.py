@@ -18,6 +18,7 @@ from slimzero.exceptions import (
     SlimZeroToolValidationError,
     SlimZeroHumanEscalation,
 )
+from slimzero.utils import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,7 @@ class RalphLoop:
         max_total_tokens: Optional[int] = None,
         drift_threshold: float = 0.75,
         api_client: Optional[Any] = None,
+        model: str = "gpt-4o",
         checkpoint_dir: str = ".gsd",
     ):
         """
@@ -149,6 +151,7 @@ class RalphLoop:
             max_total_tokens: Max total tokens before halt.
             drift_threshold: Semantic similarity threshold for drift detection.
             api_client: LLM API client.
+            model: Model name to use for LLM calls.
             checkpoint_dir: Directory for checkpoints.
         """
         self.max_steps = max_steps
@@ -156,6 +159,7 @@ class RalphLoop:
         self.max_total_tokens = max_total_tokens
         self.drift_threshold = drift_threshold
         self.api_client = api_client
+        self.model = model
         self.checkpoint_dir = checkpoint_dir
 
         self._tool_validator = ToolValidator()
@@ -499,7 +503,7 @@ Keep your response brief (2-3 sentences max)."""
         try:
             if client_module == "anthropic":
                 response = self.api_client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=self.model,
                     max_tokens=512,
                     messages=[{"role": "user", "content": prompt}],
                 )
@@ -507,7 +511,7 @@ Keep your response brief (2-3 sentences max)."""
 
             elif client_module in ("openai", "opencode", "ollama") or "openai" in client_module:
                 response = self.api_client.chat.completions.create(
-                    model="gpt-4o",
+                    model=self.model,
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return response.choices[0].message.content or ""
@@ -517,7 +521,7 @@ Keep your response brief (2-3 sentences max)."""
                 import json
                 url = "http://localhost:11434/api/generate"
                 data = {
-                    "model": "llama3.2",
+                    "model": self.model,
                     "prompt": prompt,
                     "stream": False,
                 }
@@ -532,7 +536,7 @@ Keep your response brief (2-3 sentences max)."""
 
             else:
                 response = self.api_client.chat.completions.create(
-                    model="gpt-4o",
+                    model=self.model,
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return response.choices[0].message.content or ""
@@ -543,7 +547,7 @@ Keep your response brief (2-3 sentences max)."""
 
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count."""
-        return len(text.split())
+        return count_tokens(text)
 
     def get_stats(self) -> Dict[str, Any]:
         """Get agent statistics."""

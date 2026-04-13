@@ -10,6 +10,9 @@ venv/
 env/
 .env/
 
+# Local scripts
+activate-venv.bat
+
 # IDE
 .vscode/
 .idea/
@@ -21,7 +24,6 @@ env/
 .coverage
 htmlcov/
 .tox/
-tests/
 
 # Development
 .gsd/

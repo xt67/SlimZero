@@ -31,10 +31,18 @@ class SavingsLogger:
     - cumulative_tokens_saved, cumulative_estimated_cost_usd
     """
 
+    MODEL_PRICING = {
+        "claude-sonnet-4-6": {"input": 0.000003, "output": 0.000015},
+        "claude-opus-4-6": {"input": 0.000015, "output": 0.000075},
+        "gpt-4o": {"input": 0.000005, "output": 0.000015},
+        "default": {"input": 0.000005, "output": 0.000015},
+    }
+
     def __init__(
         self,
         cost_per_1k_tokens: float = DEFAULT_COST_PER_1K_TOKENS,
         log_dir: Optional[str] = None,
+        model: str = "default",
     ):
         """
         Initialize SavingsLogger.
@@ -42,9 +50,11 @@ class SavingsLogger:
         Args:
             cost_per_1k_tokens: Cost per 1K tokens in USD.
             log_dir: Directory for log files.
+            model: Model name for pricing lookup.
         """
         self.cost_per_1k_tokens = cost_per_1k_tokens
         self.log_dir = Path(log_dir) if log_dir else None
+        self.model = model
         self._session_logs: List[Dict[str, Any]] = []
         self._cumulative_tokens_saved = 0
         self._cumulative_cost_saved = 0.0
@@ -123,9 +133,15 @@ class SavingsLogger:
         Returns:
             Dict with cumulative statistics.
         """
+        model_pricing = self.MODEL_PRICING.get(self.model, self.MODEL_PRICING["default"])
+        cost_per_token = model_pricing["input"]
+        cost_saved = self._cumulative_tokens_saved * cost_per_token
+
         return {
             "cumulative_tokens_saved": self._cumulative_tokens_saved,
-            "cumulative_estimated_cost_usd": round(self._cumulative_cost_saved, 6),
+            "cumulative_estimated_cost_usd": round(cost_saved, 6),
+            "model": self.model,
+            "model_pricing_per_token": cost_per_token,
             "total_calls": len(self._session_logs),
             "avg_tokens_saved_per_call": (
                 self._cumulative_tokens_saved / len(self._session_logs)
