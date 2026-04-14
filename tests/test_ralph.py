@@ -152,11 +152,20 @@ class TestRalphLoop:
         result = loop.run("Test goal", tools=tools)
         assert "audit_log" in result
 
-    def test_run_circuit_breaker(self):
-        """Test circuit breaker during run."""
+    def test_circuit_breaker_raises_on_step_limit(self):
+        """Circuit breaker raises when manually triggered."""
+        from slimzero.exceptions import SlimZeroCircuitBreaker
+        loop = RalphLoop(max_steps=5)
+        loop._step_count = 5
+        with pytest.raises(SlimZeroCircuitBreaker):
+            loop._check_circuit_breaker()
+
+    def test_run_returns_max_steps_when_exhausted(self):
+        """Run returns max_steps_reached when loop exhausts all steps."""
         loop = RalphLoop(max_steps=1)
         result = loop.run("Test goal")
-        assert result["result"] == "circuit_breaker"
+        assert result["result"] == "max_steps_reached"
+        assert result["steps"] == 1
 
     def test_get_stats(self):
         """Test getting stats."""

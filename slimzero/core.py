@@ -282,6 +282,7 @@ class SlimZero:
             semantic_similarity = guard_out.metadata.get("similarity", 1.0)
             validated_prompt = guard_out.prompt
             inp.prompt = validated_prompt
+            stages_applied.append("semantic_guard")
 
             if inp.few_shot_examples:
                 few_shot_out = self._few_shot_ranker.process(inp)
