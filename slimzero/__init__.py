@@ -6,7 +6,7 @@ SlimZero is a model-agnostic Python middleware library that sits between
 any application and any LLM API.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __author__ = "SlimZero Contributors"
 __license__ = "MIT"
 
